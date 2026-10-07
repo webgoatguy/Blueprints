@@ -62,6 +62,21 @@ Send the link to a friend. The first person to open it takes the other seat.
 
 ---
 
+## Game options
+
+The **Game options** section is on the home screen. Your choice applies to games you create
+online and to pass-and-play. It's remembered in your browser, and it's saved with each game,
+so your friend and the server always play by the same rules.
+
+| Option | Choices | Default |
+|---|---|---|
+| Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
+| Points for destroying an enemy Score cell | 0–20 | 2 |
+
+Score = your Score cells on the board + (enemy Score cells you destroyed × that number).
+You can see a game's options in **Rules**, in **Menu**, and in the join dialog your friend sees.
+Games created before these options existed keep their original rules (1 point, 1 · 2 · 2 turns).
+
 ## How online play works
 
 - **The server checks every move.** `api/game.js` runs each move through the same
@@ -104,8 +119,8 @@ npm run dev:env
 
 ## Changing the rules
 
-All rules live in `public/rules.js`: the starting blueprints, the turn order, what can overwrite
-what, and scoring. The server and the browser both import it, so one edit changes both.
+All rules live in `public/rules.js`: the starting blueprints, the turn orders, the game options
+(`DEFAULT_SETTINGS`, `normalizeSettings`), what can overwrite what, and scoring. The server and the browser both import it, so one edit changes both.
 Existing games are stored as a move log and the current board. A rules change applies to future
 moves, so start fresh games after changing anything big.
 

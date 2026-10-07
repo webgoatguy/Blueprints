@@ -228,11 +228,14 @@ function requestRender() {
 function renderAll() { renderHeader(); renderPanels(); requestRender(); }
 
 function renderHeader() {
-  const p = cur(), [m, of] = R.movePos(G.moveNo);
+  const order = R.settingsOf(G).turnOrder;
+  const p = cur(), [m, of] = R.movePos(G.moveNo, order), t = R.turnNo(G.moveNo, order);
   const mine = isOnline() && Net.seat === p;
   const label = mine ? 'Your move' : `${esc(seatName(p))} to move`;
+  const full = of > 1 ? `move ${m} of ${of} · turn ${t}` : `turn ${t}`;
+  const short = of > 1 ? `${m}/${of}` : '';
   turnEl.innerHTML = `<span class="dot" style="background:${COL[p].main}"></span><span class="tl">${label}</span>` +
-    `<span class="sub"><span class="full">move ${m} of ${of} · turn ${R.turnNo(G.moveNo)}</span><span class="short">${m}/${of}</span></span>`;
+    `<span class="sub"><span class="full">${full}</span><span class="short">${short}</span></span>`;
   turnEl.style.boxShadow = `inset 0 0 0 1.5px ${COL[p].main}`;
 
   if (isOnline()) {
@@ -276,8 +279,10 @@ function renderPanels() {
     P.el.classList.toggle('waiting', p !== c);
     P.badge.style.visibility = p === c ? 'visible' : 'hidden';
     P.total.textContent = sc[p].total;
-    P.sub.textContent = `${sc[p].onBoard} on board + ${sc[p].destroyed} destroyed`;
-    P.sub.title = 'Score cells on the board + opponent score cells destroyed';
+    const s = sc[p];
+    P.sub.textContent = `${s.onBoard} on board + ${s.killScore} kill pts`;
+    P.sub.title = `${s.onBoard} Score cells on the board + ${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
+    P.total.parentElement.title = P.sub.title;
     if (isOnline()) {
       const seat = Net.seats[p];
       P.player.hidden = false;
@@ -468,7 +473,7 @@ function renderStatus() {
     const ev = ghostEval(), name = `Blueprint ${UI.selected.bp + 1}`;
     if (!ev) html = `${who}: placing <b>${name}</b> — ${touch ? 'tap a hex to preview' : 'hover the board'} · Esc to cancel`;
     else if (ev.ok) html = `<span class="ok">Legal</span>` +
-      (ev.captures ? ` · captures ${ev.captures}${ev.scoreKills ? ` (${ev.scoreKills} score)` : ''}` : '') +
+      (ev.captures ? ` · captures ${ev.captures}${ev.scoreKills ? ` (${ev.scoreKills} score, +${ev.scoreKills * R.settingsOf(G).killPoints} pts)` : ''}` : '') +
       ` · ${touch ? 'tap the same hex again to place' : 'click to place'}`;
     else html = `<span class="err">${esc(ev.reason)}</span>`;
   } else if (canAct(p)) {
@@ -532,7 +537,7 @@ async function commit(move) {
   const info = r.info || {};
   const captureMsg = info.captures
     ? `${move.p === Net.seat && isOnline() ? 'You' : NAME[move.p]} captured ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
-      (info.scoreKills ? ` (${info.scoreKills} score destroyed)` : '')
+      (info.scoreKills ? ` (${info.scoreKills} score destroyed, +${info.scoreKills * R.settingsOf(G).killPoints} pts)` : '')
     : null;
 
   if (!isOnline()) {
@@ -733,6 +738,7 @@ function maybeOfferJoin(force) {
     ? `${Net.seats[taken].name} is playing ${NAME[taken]}. Join as ${NAME[open]}?`
     : `Join this game as ${NAME[open]}?`;
   $('joinBtn').textContent = `Join as ${NAME[open]}`;
+  $('joinRules').textContent = 'Options for this game: ' + settingsText(R.settingsOf(G));
   $('joinName').value = LS.get('hexbp:name', '') || '';
   if (!joinDlg.open) joinDlg.showModal();
 }
@@ -769,7 +775,7 @@ async function createGame() {
   const btn = $('createBtn');
   btn.disabled = true;
   try {
-    const res = await api('POST', { action: 'create', seat, name });
+    const res = await api('POST', { action: 'create', seat, name, settings: lobbyOpts });
     if (!res.ok) { toast(res.error || 'Could not create a game'); return; }
     saveCreds(res.id, res.seat, res.token);
     history.pushState(null, '', `${location.pathname}?g=${res.id}`);
@@ -803,6 +809,7 @@ function showLobby() {
   $('nameIn').value = LS.get('hexbp:name', '') || '';
   const pref = LS.get('hexbp:seatPref', 'blue');
   for (const b of document.querySelectorAll('#seatSeg button')) b.setAttribute('aria-pressed', String(b.dataset.seat === pref));
+  renderOptions();
   renderRecent();
   lobbyEl.hidden = false;
   renderAll();
@@ -844,15 +851,40 @@ function startLocal() {
   App.mode = 'local';
   App.history = [];
   UI.selected = null;
-  G = R.newState();
+  G = R.newState(lobbyOpts);
   hideLobby();
+  toast('Options: ' + settingsText(R.settingsOf(G)), 'info');
   renderAll();
   requestAnimationFrame(fitView);
+}
+
+/* ---------- game options (turn order, kill points) ---------- */
+const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
+function settingsText(st) {
+  return `turns ${ORDER_LABEL[st.turnOrder]} · ${st.killPoints} point${st.killPoints === 1 ? '' : 's'} per enemy Score cell destroyed`;
+}
+let lobbyOpts = R.normalizeSettings(LS.get('hexbp:settings', null) || R.DEFAULT_SETTINGS);
+function setLobbyOpts(patch) {
+  lobbyOpts = R.normalizeSettings({ ...lobbyOpts, ...patch });
+  LS.set('hexbp:settings', lobbyOpts);
+  renderOptions();
+}
+function renderOptions() {
+  for (const b of document.querySelectorAll('#orderSeg button')) b.setAttribute('aria-pressed', String(b.dataset.order === lobbyOpts.turnOrder));
+  $('kpVal').textContent = lobbyOpts.killPoints;
+  $('kpMinus').disabled = lobbyOpts.killPoints <= 0;
+  $('kpPlus').disabled = lobbyOpts.killPoints >= R.MAX_KILL_POINTS;
+}
+function fillRulesDialog() {
+  const st = App.mode ? R.settingsOf(G) : lobbyOpts;
+  $('rulesThis').textContent = (App.mode ? 'This game: ' : 'Selected options: ') + settingsText(st);
+  $('rulesKp').textContent = st.killPoints;
 }
 
 function openMenu() {
   const stack = $('menuStack');
   stack.innerHTML = '';
+  $('menuInfo').textContent = 'Options: ' + settingsText(R.settingsOf(G));
   const add = (title, sub, fn) => {
     const b = document.createElement('button');
     b.innerHTML = `${esc(title)}<small>${esc(sub)}</small>`;
@@ -1097,8 +1129,11 @@ function finishDrag() {
 
 /* ---------- buttons & keys ---------- */
 undoBtn.addEventListener('click', undo);
-$('rulesBtn').addEventListener('click', () => rulesDlg.showModal());
-$('lobbyRules').addEventListener('click', () => rulesDlg.showModal());
+$('rulesBtn').addEventListener('click', () => { fillRulesDialog(); rulesDlg.showModal(); });
+$('lobbyRules').addEventListener('click', () => { fillRulesDialog(); rulesDlg.showModal(); });
+for (const b of document.querySelectorAll('#orderSeg button')) b.addEventListener('click', () => setLobbyOpts({ turnOrder: b.dataset.order }));
+$('kpMinus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.killPoints - 1 }));
+$('kpPlus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.killPoints + 1 }));
 $('menuBtn').addEventListener('click', openMenu);
 inviteBtn.addEventListener('click', () => {
   if (!Net.seat && PLAYERS.some(p => !Net.seats[p])) maybeOfferJoin(true);

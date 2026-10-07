@@ -174,6 +174,19 @@
   .seg button { padding: 8px 6px; display: flex; align-items: center; justify-content: center; gap: 6px; }
   .seg button i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .seg button[aria-pressed=true] { background: #3a3a3a; border-color: #8a8a8a; color: #fff; }
+  .seg.two { grid-template-columns: repeat(2, 1fr); }
+  .seg.two button { flex-direction: column; gap: 1px; padding: 8px 6px 7px; }
+  .seg.two button span { font-weight: 600; letter-spacing: .5px; }
+  .seg.two button small { color: var(--muted); font-size: 11px; }
+  .stepper { display: inline-flex; align-items: center; gap: 0; align-self: flex-start; }
+  .stepper button { width: 38px; height: 36px; padding: 0; font-size: 18px; line-height: 1; }
+  .stepper button:first-child { border-radius: 8px 0 0 8px; }
+  .stepper button:last-child { border-radius: 0 8px 8px 0; }
+  .stepper output {
+    min-width: 52px; height: 36px; display: grid; place-items: center; font-weight: 700; font-size: 16px;
+    border-top: 1px solid #474747; border-bottom: 1px solid #474747; background: #1c1c1c; font-variant-numeric: tabular-nums;
+  }
+  .thisgame { background: #2f2f2f; border-radius: 8px; padding: 8px 10px; color: #dcdcdc; font-size: 13px; }
   .row { display: flex; gap: 8px; }
   .row input { flex: 1; text-transform: uppercase; letter-spacing: 1px; }
   .wide { width: 100%; padding: 10px 12px; }
@@ -287,6 +300,26 @@
     <p class="tagline">A two-player territory game on an endless hex grid.</p>
 
     <div class="section">
+      <h2>Game options</h2>
+      <div class="field">
+        <label>Turn order</label>
+        <div class="seg two" id="orderSeg">
+          <button type="button" data-order="122" aria-pressed="true"><span>1 · 2 · 2 · 2 …</span><small>Blue 1, then 2 moves each</small></button>
+          <button type="button" data-order="1111" aria-pressed="false"><span>1 · 1 · 1 · 1 …</span><small>Alternate single moves</small></button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Points for destroying an enemy Score cell</label>
+        <div class="stepper">
+          <button type="button" id="kpMinus" aria-label="Fewer points">−</button>
+          <output id="kpVal" aria-live="polite">2</output>
+          <button type="button" id="kpPlus" aria-label="More points">+</button>
+        </div>
+      </div>
+      <p class="hint">Used for games you create or play on this device. Friends who join your game play with your options.</p>
+    </div>
+
+    <div class="section">
       <h2>Play online with a friend</h2>
       <div class="field">
         <label for="nameIn">Your name</label>
@@ -335,6 +368,7 @@
     <label for="joinName">Your name</label>
     <input type="text" id="joinName" maxlength="24" placeholder="Optional" autocomplete="nickname">
   </div>
+  <p class="hint" id="joinRules"></p>
   <div class="foot">
     <button id="watchBtn">Just watch</button>
     <button class="primary" id="joinBtn">Join</button>
@@ -343,16 +377,21 @@
 
 <dialog id="menuDlg" class="small">
   <h2>Game menu</h2>
+  <p class="hint" id="menuInfo"></p>
   <div class="stack" id="menuStack"></div>
   <form method="dialog" class="foot"><button>Close</button></form>
 </dialog>
 
 <dialog id="rules">
   <h2>How to play</h2>
+  <p class="thisgame" id="rulesThis"></p>
   <p>Red vs Blue on an endless hex board. Each side starts with one Wall cell on the board, 6 apart on the same row. Each player also owns three <b>blueprints</b> that sit off the board. All three start identical: a 7-cell flower with a Wall in the centre, Score cells to its left and right, and Attack cells in the other four spots.</p>
 
-  <h3>Turn order</h3>
-  <p>Blue makes 1 move, then the players alternate 2 moves each: Red 2, Blue 2, Red 2, and so on.</p>
+  <h3>Turn order (a game option)</h3>
+  <ul>
+    <li><b>1 · 2 · 2 · 2 …</b> (default): Blue makes 1 move, then the players alternate 2 moves each: Red 2, Blue 2, Red 2, and so on.</li>
+    <li><b>1 · 1 · 1 · 1 …</b>: the players simply take turns one move at a time, Blue first.</li>
+  </ul>
 
   <h3>A move is one of</h3>
   <ul>
@@ -361,7 +400,7 @@
   </ul>
 
   <h3>Score</h3>
-  <p>Your Score cells on the board + opponent Score cells you destroyed (by overwriting them with any of your cells).</p>
+  <p>Your Score cells on the board, plus <b><span id="rulesKp">2</span> points</b> for every opponent Score cell you destroyed (by overwriting it with any of your cells). The points per destroyed cell are a game option; the default is 2.</p>
 
   <h3>Cells</h3>
   <ul id="rulesLegend"></ul>

@@ -30,8 +30,28 @@ export function startBlueprint() {
   return o;
 }
 
-export function newState() {
+/* ---------- game options (chosen when a game is created) ---------- */
+// turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
+//            '1111' -> players simply alternate single moves
+// killPoints: points earned for each enemy Score cell you destroy
+export const TURN_ORDERS = ['122', '1111'];
+export const DEFAULT_SETTINGS = { turnOrder: '122', killPoints: 2 };
+const LEGACY_SETTINGS = { turnOrder: '122', killPoints: 1 }; // games saved before options existed
+export const MAX_KILL_POINTS = 20;
+
+export function normalizeSettings(o) {
+  const s = o && typeof o === 'object' ? o : {};
+  const kp = Number(s.killPoints);
   return {
+    turnOrder: TURN_ORDERS.includes(s.turnOrder) ? s.turnOrder : DEFAULT_SETTINGS.turnOrder,
+    killPoints: Number.isInteger(kp) && kp >= 0 && kp <= MAX_KILL_POINTS ? kp : DEFAULT_SETTINGS.killPoints,
+  };
+}
+export const settingsOf = s => (s && s.settings) || LEGACY_SETTINGS;
+
+export function newState(settings) {
+  return {
+    settings: normalizeSettings(settings),
     moveNo: 0,
     board: {
       [key(-3, 0)]: { owner: 'blue', type: 'wall' },
@@ -46,12 +66,24 @@ export function newState() {
   };
 }
 
-/* ---------- turn order: Blue 1, then Red 2, Blue 2, Red 2, ... ---------- */
+/* ---------- turn order ---------- */
+// '122':  Blue 1, then Red 2, Blue 2, Red 2, ...
+// '1111': Blue 1, Red 1, Blue 1, Red 1, ...
 
-export function playerAt(n) { return n === 0 ? 'blue' : (Math.floor((n - 1) / 2) % 2 === 0 ? 'red' : 'blue'); }
-export function movePos(n) { return n === 0 ? [1, 1] : [((n - 1) % 2) + 1, 2]; }
-export function turnNo(n) { return n === 0 ? 1 : Math.floor((n - 1) / 2) + 2; }
-export const currentPlayer = s => playerAt(s.moveNo);
+export function playerAt(n, order = '122') {
+  if (order === '1111') return n % 2 === 0 ? 'blue' : 'red';
+  return n === 0 ? 'blue' : (Math.floor((n - 1) / 2) % 2 === 0 ? 'red' : 'blue');
+}
+// [which move of this turn, moves in this turn]
+export function movePos(n, order = '122') {
+  if (order === '1111') return [1, 1];
+  return n === 0 ? [1, 1] : [((n - 1) % 2) + 1, 2];
+}
+export function turnNo(n, order = '122') {
+  if (order === '1111') return n + 1;
+  return n === 0 ? 1 : Math.floor((n - 1) / 2) + 2;
+}
+export const currentPlayer = s => playerAt(s.moveNo, settingsOf(s).turnOrder);
 
 /* ---------- helpers ---------- */
 
@@ -69,11 +101,16 @@ export function isConnected(cells) {
   return seen.size === keys.length;
 }
 
+// Score = your Score cells on the board + killPoints for each enemy Score cell you destroyed.
 export function getScores(s) {
+  const kp = settingsOf(s).killPoints;
   const on = { blue: 0, red: 0 };
   for (const k in s.board) { const c = s.board[k]; if (c.type === 'score') on[c.owner]++; }
   const out = {};
-  for (const p of PLAYERS) out[p] = { onBoard: on[p], destroyed: s.destroyed[p], total: on[p] + s.destroyed[p] };
+  for (const p of PLAYERS) {
+    const kills = s.destroyed[p];
+    out[p] = { onBoard: on[p], destroyed: kills, killPoints: kp, killScore: kills * kp, total: on[p] + kills * kp };
+  }
   return out;
 }
 
@@ -191,8 +228,8 @@ export function applyMove(s, move) {
 }
 
 // Rebuild a state from scratch by replaying a move log (used for take-backs).
-export function replay(log) {
-  let s = newState();
+export function replay(log, settings) {
+  let s = newState(settings);
   for (const m of log) {
     const r = applyMove(s, m);
     if (!r.ok) throw new Error('Corrupt move log: ' + r.error);

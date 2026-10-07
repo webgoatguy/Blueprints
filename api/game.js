@@ -1,7 +1,8 @@
 // Single Vercel serverless function that runs every online game.
 //
 //   GET  /api/game?id=ABC123&v=7         -> latest game (or {unchanged:true} if still at v7)
-//   POST /api/game  {action:'create', seat:'blue'|'red'|'random', name}
+//   POST /api/game  {action:'create', seat:'blue'|'red'|'random', name,
+//                    settings:{turnOrder:'122'|'1111', killPoints:0-20}}
 //   POST /api/game  {action:'join',   id, name}
 //   POST /api/game  {action:'move',   id, token, v, move}
 //   POST /api/game  {action:'undo',   id, token, v}       (take back your own last move)
@@ -11,7 +12,7 @@
 
 import crypto from 'node:crypto';
 import { getStore } from '../lib/store.js';
-import { applyMove, sanitizeMove, replay, newState, PLAYERS, MAX_LOG } from '../public/rules.js';
+import { applyMove, sanitizeMove, replay, newState, settingsOf, PLAYERS, MAX_LOG } from '../public/rules.js';
 
 const TTL = 60 * 60 * 24 * 60;              // games expire after 60 days without activity
 const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -93,7 +94,7 @@ async function create(store, body) {
       id, v: 1, created: now, updated: now,
       seats: { blue: null, red: null },
       log: [],
-      state: newState(),
+      state: newState(body.settings),   // turn order + kill points, validated in rules.js
     };
     game.seats[seat] = { h: sha(token), name: cleanName(body.name, seat === 'blue' ? 'Blue' : 'Red') };
     if (await store.setNX(gameKey(id), JSON.stringify(game), TTL)) {
@@ -144,7 +145,7 @@ async function undo(store, body) {
     const last = g.log[g.log.length - 1];
     if (!last || last.p !== seat) throw new HttpError(409, 'You can only take back your own last move, before your opponent moves', { game: publicView(g) });
     g.log.pop();
-    g.state = replay(g.log);
+    g.state = replay(g.log, settingsOf(g.state));
     g.v++;
     return { ok: true, game: publicView(g) };
   });
