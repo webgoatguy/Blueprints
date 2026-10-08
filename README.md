@@ -70,12 +70,21 @@ so your friend and the server always play by the same rules.
 
 | Option | Choices | Default |
 |---|---|---|
+| Mode | **Classic** or **Contact** (see below) | Classic |
 | Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–20 | 2 |
+| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value) | Classic 2, Contact 20 |
 
-Score = your Score cells on the board + (enemy Score cells you destroyed × that number).
+**Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
+Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
+
+**Contact mode:**
+- A placement may not overlap any existing cell, yours or your opponent's. It must still touch one of your cells.
+- When you place cells, every enemy cell touching your new cells is deleted, unless it's a Wall.
+- Each time your turn ends, you bank 1 point per Score cell you have on the board.
+  The panel shows your current rate, for example `+3/turn`.
+- Score = banked points + (enemy Score cells deleted × kill points, 20 by default).
 You can see a game's options in **Rules**, in **Menu**, and in the join dialog your friend sees.
-Games created before these options existed keep their original rules (1 point, 1 · 2 · 2 turns).
+Games created before these options existed keep their original rules (Classic, 1 point, 1 · 2 · 2 turns).
 
 ## How online play works
 

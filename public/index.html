@@ -182,10 +182,15 @@
   .stepper button { width: 38px; height: 36px; padding: 0; font-size: 18px; line-height: 1; }
   .stepper button:first-child { border-radius: 8px 0 0 8px; }
   .stepper button:last-child { border-radius: 0 8px 8px 0; }
-  .stepper output {
-    min-width: 52px; height: 36px; display: grid; place-items: center; font-weight: 700; font-size: 16px;
-    border-top: 1px solid #474747; border-bottom: 1px solid #474747; background: #1c1c1c; font-variant-numeric: tabular-nums;
+  .stepper input {
+    width: 60px; height: 36px; text-align: center; font-family: inherit; font-weight: 700; font-size: 16px; color: var(--text);
+    border: 1px solid #474747; border-left: none; border-right: none; border-radius: 0; background: #1c1c1c;
+    font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; padding: 0;
+    -webkit-user-select: text; user-select: text;
   }
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .stepper input:focus { outline: 2px solid var(--blue); outline-offset: -2px; }
+  .score .inc { font-size: 11px; font-weight: 600; color: var(--good); margin-right: 6px; vertical-align: 3px; white-space: nowrap; }
   .thisgame { background: #2f2f2f; border-radius: 8px; padding: 8px 10px; color: #dcdcdc; font-size: 13px; }
   .row { display: flex; gap: 8px; }
   .row input { flex: 1; text-transform: uppercase; letter-spacing: 1px; }
@@ -302,6 +307,14 @@
     <div class="section">
       <h2>Game options</h2>
       <div class="field">
+        <label>Mode</label>
+        <div class="seg two" id="modeSeg">
+          <button type="button" data-mode="classic" aria-pressed="true"><span>Classic</span><small>Overlap to capture</small></button>
+          <button type="button" data-mode="contact" aria-pressed="false"><span>Contact</span><small>Touch to delete · bank points</small></button>
+        </div>
+        <p class="hint" id="modeHint" style="margin-top:2px"></p>
+      </div>
+      <div class="field">
         <label>Turn order</label>
         <div class="seg two" id="orderSeg">
           <button type="button" data-order="122" aria-pressed="true"><span>1 · 2 · 2 · 2 …</span><small>Blue 1, then 2 moves each</small></button>
@@ -312,7 +325,7 @@
         <label>Points for destroying an enemy Score cell</label>
         <div class="stepper">
           <button type="button" id="kpMinus" aria-label="Fewer points">−</button>
-          <output id="kpVal" aria-live="polite">2</output>
+          <input type="number" id="kpVal" min="0" max="100" step="1" inputmode="numeric" aria-label="Points per destroyed enemy Score cell" value="2">
           <button type="button" id="kpPlus" aria-label="More points">+</button>
         </div>
       </div>
@@ -393,14 +406,24 @@
     <li><b>1 · 1 · 1 · 1 …</b>: the players simply take turns one move at a time, Blue first.</li>
   </ul>
 
-  <h3>A move is one of</h3>
+  <h3>A move is one of (Classic mode)</h3>
   <ul>
     <li><b>Place</b> — stamp one of your blueprints onto the board. Part of it must touch or overlap your existing cells. Your new cells replace your own cells underneath. Any of your cells can overwrite opponent cells, except opponent <b>Walls</b>, which can never be overwritten. If any cell lands on an opponent Wall, the whole placement is illegal.</li>
     <li><b>Edit</b> — move one cell to a new spot in the same blueprint or another of your blueprints. Every blueprint must stay one connected blob. Moved cells keep their type.</li>
   </ul>
 
-  <h3>Score</h3>
-  <p>Your Score cells on the board, plus <b><span id="rulesKp">2</span> points</b> for every opponent Score cell you destroyed (by overwriting it with any of your cells). The points per destroyed cell are a game option; the default is 2.</p>
+  <h3>Score (Classic mode)</h3>
+  <p>Your Score cells on the board, plus <b><span class="rulesKp">2</span> points</b> for every opponent Score cell you destroyed (by overwriting it with any of your cells). The points per destroyed cell are a game option; the default is 2.</p>
+
+  <h3>Contact mode</h3>
+  <p>Same board, blueprints, edits and turn order, with these changes:</p>
+  <ul>
+    <li><b>No overlapping.</b> A placement may not cover any existing cell, yours or your opponent’s. It must still touch one of your cells.</li>
+    <li><b>Touch to delete.</b> When you place cells, every opponent cell touching your new cells is deleted, unless it is a <b>Wall</b>.</li>
+    <li><b>Banking.</b> Each time your turn ends, you bank 1 point for every Score cell you have on the board. The panel shows your current rate, for example <b>+3/turn</b>.</li>
+    <li><b>Kills.</b> Deleting an opponent Score cell is worth <b><span class="rulesKp">20</span> points</b> (a game option; the default is 20).</li>
+    <li>Score = banked points + kill points.</li>
+  </ul>
 
   <h3>Cells</h3>
   <ul id="rulesLegend"></ul>

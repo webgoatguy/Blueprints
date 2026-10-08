@@ -194,12 +194,12 @@ function buildPanels() {
       <div class="phead">
         <div class="pname"><span class="dot" style="background:${COL[p].main}"></span>${NAME[p]}<span class="badge">to move</span></div>
         <div class="pplayer"></div>
-        <div class="score" title="Score cells on board + opponent score cells destroyed"><b></b></div>
+        <div class="score"><span class="inc"></span><b></b></div>
         <small class="breakdown"></small>
       </div>
       <div class="cards"></div>`;
     PANEL[p] = { el, badge: el.querySelector('.badge'), player: el.querySelector('.pplayer'),
-      total: el.querySelector('.score b'), sub: el.querySelector('.breakdown') };
+      total: el.querySelector('.score b'), inc: el.querySelector('.score .inc'), sub: el.querySelector('.breakdown') };
     const cards = el.querySelector('.cards');
     BP[p] = [];
     for (let b = 0; b < 3; b++) {
@@ -280,8 +280,18 @@ function renderPanels() {
     P.badge.style.visibility = p === c ? 'visible' : 'hidden';
     P.total.textContent = sc[p].total;
     const s = sc[p];
-    P.sub.textContent = `${s.onBoard} on board + ${s.killScore} kill pts`;
-    P.sub.title = `${s.onBoard} Score cells on the board + ${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
+    const killTxt = `${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
+    if (s.mode === 'contact') {
+      P.sub.textContent = `${s.banked} banked + ${s.killScore} kill pts`;
+      P.sub.title = `${s.banked} points banked at the ends of turns + ${killTxt}.\n${s.perTurn} Score cell${s.perTurn === 1 ? '' : 's'} on the board → +${s.perTurn} at the end of each turn.`;
+      P.inc.textContent = `+${s.perTurn}/turn`;
+      P.inc.hidden = false;
+    } else {
+      P.sub.textContent = `${s.onBoard} on board + ${s.killScore} kill pts`;
+      P.sub.title = `${s.onBoard} Score cells on the board + ${killTxt}`;
+      P.inc.hidden = true;
+    }
+    P.inc.title = P.sub.title;
     P.total.parentElement.title = P.sub.title;
     if (isOnline()) {
       const seat = Net.seats[p];
@@ -430,12 +440,35 @@ function renderBoard() {
     ctx.lineWidth = Math.max(1.5, s * 0.07);
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.stroke();
+    // Contact mode: ghost outlines where the opponent's cells were just deleted
+    const gone = (lm.deleted || []).filter(k => !G.board[k]);
+    if (gone.length) {
+      const victim = R.other(lm.player);
+      ctx.beginPath();
+      for (const k of gone) { const [q, r] = unkey(k); hexPath(ctx, X(q, r), Y(r), s * 0.8, true); }
+      ctx.setLineDash([Math.max(3, s * 0.18), Math.max(3, s * 0.14)]);
+      ctx.lineWidth = Math.max(1.5, s * 0.07);
+      ctx.strokeStyle = COL[victim].main + 'aa';
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   // placement preview
   const ev = ghostEval();
   if (ev) {
     const p = cur();
+    // Contact mode: enemy cells this placement would delete
+    for (const d of ev.deletes || []) {
+      const x = X(d.q, d.r), y = Y(d.r), k = s * 0.32;
+      hexPath(ctx, x, y, s * 0.9);
+      ctx.fillStyle = 'rgba(20,20,20,0.45)'; ctx.fill();
+      ctx.lineWidth = Math.max(2, s * 0.09); ctx.strokeStyle = AMBER; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k);
+      ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
+      ctx.lineWidth = Math.max(2, s * 0.11); ctx.lineCap = 'round'; ctx.stroke(); ctx.lineCap = 'butt';
+    }
     for (const c of ev.cells) drawCell(ctx, X(c.q, c.r), Y(c.r), s, p, c.type, 0.6);
     for (const c of ev.cells) {
       const x = X(c.q, c.r), y = Y(c.r);
@@ -473,7 +506,7 @@ function renderStatus() {
     const ev = ghostEval(), name = `Blueprint ${UI.selected.bp + 1}`;
     if (!ev) html = `${who}: placing <b>${name}</b> — ${touch ? 'tap a hex to preview' : 'hover the board'} · Esc to cancel`;
     else if (ev.ok) html = `<span class="ok">Legal</span>` +
-      (ev.captures ? ` · captures ${ev.captures}${ev.scoreKills ? ` (${ev.scoreKills} score, +${ev.scoreKills * R.settingsOf(G).killPoints} pts)` : ''}` : '') +
+      (ev.captures ? ` · ${R.modeOf(G) === 'contact' ? 'deletes' : 'captures'} ${ev.captures}${ev.scoreKills ? ` (${ev.scoreKills} score, +${ev.scoreKills * R.settingsOf(G).killPoints} pts)` : ''}` : '') +
       ` · ${touch ? 'tap the same hex again to place' : 'click to place'}`;
     else html = `<span class="err">${esc(ev.reason)}</span>`;
   } else if (canAct(p)) {
@@ -535,10 +568,14 @@ async function commit(move) {
   const r = R.applyMove(G, move);
   if (!r.ok) { toast(r.error); return; }
   const info = r.info || {};
-  const captureMsg = info.captures
-    ? `${move.p === Net.seat && isOnline() ? 'You' : NAME[move.p]} captured ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
-      (info.scoreKills ? ` (${info.scoreKills} score destroyed, +${info.scoreKills * R.settingsOf(G).killPoints} pts)` : '')
-    : null;
+  const who = move.p === Net.seat && isOnline() ? 'You' : NAME[move.p];
+  const parts = [];
+  if (info.captures) {
+    parts.push(`${who} ${R.modeOf(G) === 'contact' ? 'deleted' : 'captured'} ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
+      (info.scoreKills ? ` (${info.scoreKills} score, +${info.scoreKills * R.settingsOf(G).killPoints} pts)` : ''));
+  }
+  if (info.turnEnded) parts.push(`${parts.length ? 'turn over' : 'Turn over'}: +${info.banked} banked`);
+  const captureMsg = parts.length ? parts.join(' · ') : null;
 
   if (!isOnline()) {
     App.history.push(G);
@@ -775,7 +812,7 @@ async function createGame() {
   const btn = $('createBtn');
   btn.disabled = true;
   try {
-    const res = await api('POST', { action: 'create', seat, name, settings: lobbyOpts });
+    const res = await api('POST', { action: 'create', seat, name, settings: chosenSettings() });
     if (!res.ok) { toast(res.error || 'Could not create a game'); return; }
     saveCreds(res.id, res.seat, res.token);
     history.pushState(null, '', `${location.pathname}?g=${res.id}`);
@@ -851,34 +888,61 @@ function startLocal() {
   App.mode = 'local';
   App.history = [];
   UI.selected = null;
-  G = R.newState(lobbyOpts);
+  G = R.newState(chosenSettings());
   hideLobby();
   toast('Options: ' + settingsText(R.settingsOf(G)), 'info');
   renderAll();
   requestAnimationFrame(fitView);
 }
 
-/* ---------- game options (turn order, kill points) ---------- */
+/* ---------- game options (mode, turn order, kill points) ---------- */
+const MODE_LABEL = { classic: 'Classic', contact: 'Contact' };
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {
-  return `turns ${ORDER_LABEL[st.turnOrder]} · ${st.killPoints} point${st.killPoints === 1 ? '' : 's'} per enemy Score cell destroyed`;
+  return `${MODE_LABEL[st.mode] || 'Classic'} mode · turns ${ORDER_LABEL[st.turnOrder]} · ` +
+    `${st.killPoints} point${st.killPoints === 1 ? '' : 's'} per enemy Score cell destroyed`;
 }
-let lobbyOpts = R.normalizeSettings(LS.get('hexbp:settings', null) || R.DEFAULT_SETTINGS);
+
+// Lobby choices, remembered per browser. Each mode keeps its own kill-points value
+// (Classic defaults to 2, Contact to 20).
+function loadLobbyOpts() {
+  const saved = LS.get('hexbp:options', null);
+  const old = LS.get('hexbp:settings', null);   // from before modes existed
+  const o = saved && typeof saved === 'object' ? saved : {};
+  const kp = { ...R.DEFAULT_KILL_POINTS, ...(old && Number.isInteger(old.killPoints) ? { classic: old.killPoints } : {}), ...(o.kp || {}) };
+  for (const m of R.MODES) kp[m] = R.normalizeSettings({ mode: m, killPoints: kp[m] }).killPoints;
+  return {
+    mode: R.MODES.includes(o.mode) ? o.mode : 'classic',
+    turnOrder: R.TURN_ORDERS.includes(o.turnOrder) ? o.turnOrder : (old && R.TURN_ORDERS.includes(old.turnOrder) ? old.turnOrder : '122'),
+    kp,
+  };
+}
+let lobbyOpts = loadLobbyOpts();
+const chosenSettings = () => R.normalizeSettings({ mode: lobbyOpts.mode, turnOrder: lobbyOpts.turnOrder, killPoints: lobbyOpts.kp[lobbyOpts.mode] });
 function setLobbyOpts(patch) {
-  lobbyOpts = R.normalizeSettings({ ...lobbyOpts, ...patch });
-  LS.set('hexbp:settings', lobbyOpts);
+  if (patch.mode) lobbyOpts.mode = patch.mode;
+  if (patch.turnOrder) lobbyOpts.turnOrder = patch.turnOrder;
+  if ('killPoints' in patch) {
+    lobbyOpts.kp[lobbyOpts.mode] = R.normalizeSettings({ mode: lobbyOpts.mode, killPoints: clamp(Math.round(patch.killPoints) || 0, 0, R.MAX_KILL_POINTS) }).killPoints;
+  }
+  LS.set('hexbp:options', lobbyOpts);
   renderOptions();
 }
 function renderOptions() {
+  for (const b of document.querySelectorAll('#modeSeg button')) b.setAttribute('aria-pressed', String(b.dataset.mode === lobbyOpts.mode));
   for (const b of document.querySelectorAll('#orderSeg button')) b.setAttribute('aria-pressed', String(b.dataset.order === lobbyOpts.turnOrder));
-  $('kpVal').textContent = lobbyOpts.killPoints;
-  $('kpMinus').disabled = lobbyOpts.killPoints <= 0;
-  $('kpPlus').disabled = lobbyOpts.killPoints >= R.MAX_KILL_POINTS;
+  const kp = lobbyOpts.kp[lobbyOpts.mode];
+  if (document.activeElement !== $('kpVal') || Number($('kpVal').value) !== kp) $('kpVal').value = kp;
+  $('kpMinus').disabled = kp <= 0;
+  $('kpPlus').disabled = kp >= R.MAX_KILL_POINTS;
+  $('modeHint').textContent = lobbyOpts.mode === 'contact'
+    ? 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.'
+    : 'Classic: stamps may overlap. Your cells overwrite enemy cells (except walls). Score = Score cells on the board + kills.';
 }
 function fillRulesDialog() {
-  const st = App.mode ? R.settingsOf(G) : lobbyOpts;
+  const st = App.mode ? R.settingsOf(G) : chosenSettings();
   $('rulesThis').textContent = (App.mode ? 'This game: ' : 'Selected options: ') + settingsText(st);
-  $('rulesKp').textContent = st.killPoints;
+  for (const el of document.querySelectorAll('.rulesKp')) el.textContent = st.killPoints;
 }
 
 function openMenu() {
@@ -1131,9 +1195,12 @@ function finishDrag() {
 undoBtn.addEventListener('click', undo);
 $('rulesBtn').addEventListener('click', () => { fillRulesDialog(); rulesDlg.showModal(); });
 $('lobbyRules').addEventListener('click', () => { fillRulesDialog(); rulesDlg.showModal(); });
+for (const b of document.querySelectorAll('#modeSeg button')) b.addEventListener('click', () => setLobbyOpts({ mode: b.dataset.mode }));
 for (const b of document.querySelectorAll('#orderSeg button')) b.addEventListener('click', () => setLobbyOpts({ turnOrder: b.dataset.order }));
-$('kpMinus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.killPoints - 1 }));
-$('kpPlus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.killPoints + 1 }));
+$('kpMinus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.kp[lobbyOpts.mode] - 1 }));
+$('kpPlus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.kp[lobbyOpts.mode] + 1 }));
+$('kpVal').addEventListener('change', () => setLobbyOpts({ killPoints: Number($('kpVal').value) }));
+$('kpVal').addEventListener('blur', renderOptions);
 $('menuBtn').addEventListener('click', openMenu);
 inviteBtn.addEventListener('click', () => {
   if (!Net.seat && PLAYERS.some(p => !Net.seats[p])) maybeOfferJoin(true);

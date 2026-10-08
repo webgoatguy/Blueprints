@@ -31,23 +31,35 @@ export function startBlueprint() {
 }
 
 /* ---------- game options (chosen when a game is created) ---------- */
+// mode:      'classic' -> stamps may overlap; your cells overwrite enemy non-wall cells.
+//                         Score = Score cells on the board + kills x killPoints.
+//            'contact' -> stamps may not overlap ANY cell; enemy non-wall cells touching
+//                         the new cells are deleted. At the end of each of your turns you
+//                         bank 1 point per Score cell you have on the board.
+//                         Score = banked points + kills x killPoints.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
+export const MODES = ['classic', 'contact'];
 export const TURN_ORDERS = ['122', '1111'];
-export const DEFAULT_SETTINGS = { turnOrder: '122', killPoints: 2 };
-const LEGACY_SETTINGS = { turnOrder: '122', killPoints: 1 }; // games saved before options existed
-export const MAX_KILL_POINTS = 20;
+export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20 };
+export const DEFAULT_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 2 };
+const LEGACY_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 1 }; // games saved before options existed
+export const MAX_KILL_POINTS = 100;
 
 export function normalizeSettings(o) {
   const s = o && typeof o === 'object' ? o : {};
+  const mode = MODES.includes(s.mode) ? s.mode : 'classic';
   const kp = Number(s.killPoints);
   return {
+    mode,
     turnOrder: TURN_ORDERS.includes(s.turnOrder) ? s.turnOrder : DEFAULT_SETTINGS.turnOrder,
-    killPoints: Number.isInteger(kp) && kp >= 0 && kp <= MAX_KILL_POINTS ? kp : DEFAULT_SETTINGS.killPoints,
+    killPoints: Number.isInteger(kp) && kp >= 0 && kp <= MAX_KILL_POINTS ? kp : DEFAULT_KILL_POINTS[mode],
   };
 }
-export const settingsOf = s => (s && s.settings) || LEGACY_SETTINGS;
+// Games saved before an option existed fall back to the rules they were created with.
+export const settingsOf = s => (s && s.settings ? { mode: 'classic', ...s.settings } : LEGACY_SETTINGS);
+export const modeOf = s => settingsOf(s).mode;
 
 export function newState(settings) {
   return {
@@ -62,6 +74,7 @@ export function newState(settings) {
       red: [startBlueprint(), startBlueprint(), startBlueprint()],
     },
     destroyed: { blue: 0, red: 0 },
+    banked: { blue: 0, red: 0 },   // Contact mode: points banked at the end of each turn
     lastMove: null,
   };
 }
@@ -101,15 +114,23 @@ export function isConnected(cells) {
   return seen.size === keys.length;
 }
 
-// Score = your Score cells on the board + killPoints for each enemy Score cell you destroyed.
+export function scoreCellsOf(s, p) {
+  let n = 0;
+  for (const k in s.board) { const c = s.board[k]; if (c.type === 'score' && c.owner === p) n++; }
+  return n;
+}
+
+// Classic: Score = your Score cells on the board + killPoints x enemy Score cells destroyed.
+// Contact: Score = points banked at the end of your turns + killPoints x enemy Score cells destroyed.
 export function getScores(s) {
-  const kp = settingsOf(s).killPoints;
-  const on = { blue: 0, red: 0 };
-  for (const k in s.board) { const c = s.board[k]; if (c.type === 'score') on[c.owner]++; }
+  const { killPoints: kp, mode } = settingsOf(s);
   const out = {};
   for (const p of PLAYERS) {
+    const onBoard = scoreCellsOf(s, p);
     const kills = s.destroyed[p];
-    out[p] = { onBoard: on[p], destroyed: kills, killPoints: kp, killScore: kills * kp, total: on[p] + kills * kp };
+    const banked = (s.banked && s.banked[p]) || 0;
+    const base = mode === 'contact' ? banked : onBoard;
+    out[p] = { mode, onBoard, banked, perTurn: onBoard, destroyed: kills, killPoints: kp, killScore: kills * kp, total: base + kills * kp };
   }
   return out;
 }
@@ -117,7 +138,9 @@ export function getScores(s) {
 /* ---------- placement ---------- */
 
 // Stamp blueprint `bpIdx` so that its cell `handleKey` lands on board hex (hq, hr).
+// Returns each stamped cell with a status, plus (Contact mode) the enemy cells that would be deleted.
 export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
+  const contact = modeOf(s) === 'contact';
   const bp = s.blueprints[player][bpIdx];
   const [aq, ar] = unkey(handleKey);
   const cells = [];
@@ -128,7 +151,11 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
     const bq = q - aq + hq, br = r - ar + hr, bk = key(bq, br);
     const ex = s.board[bk];
     let status = 'empty';
-    if (ex) {
+    if (ex && contact) {
+      // Contact mode: no overlapping anything.
+      status = 'blocked';
+      if (!reason) reason = ex.owner === player ? 'Can’t overlap your own cells in Contact mode' : 'Can’t overlap opponent cells in Contact mode';
+    } else if (ex) {
       if (ex.owner === player) { status = 'own'; touches = true; }
       // Any cell type can overwrite an opponent cell, unless that cell is a wall.
       else if (ex.type !== 'wall') {
@@ -147,9 +174,27 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
     }
     cells.push({ k: bk, q: bq, r: br, type, status });
   }
+
+  // Contact mode: every enemy non-wall cell touching a newly placed cell gets deleted.
+  const deletes = [];
+  if (contact) {
+    const seen = new Set();
+    for (const c of cells) {
+      for (const [dq, dr] of DIRS) {
+        const nq = c.q + dq, nr = c.r + dr, nk = key(nq, nr);
+        if (seen.has(nk)) continue;
+        seen.add(nk);
+        const n = s.board[nk];
+        if (n && n.owner !== player && n.type !== 'wall') deletes.push({ k: nk, q: nq, r: nr, type: n.type });
+      }
+    }
+    captures = deletes.length;
+    scoreKills = deletes.filter(d => d.type === 'score').length;
+  }
+
   if (!cells.length && !reason) reason = 'That blueprint is empty';
-  if (!touches && !reason) reason = 'Must touch or overlap one of your cells';
-  return { cells, ok: !reason, reason, captures, scoreKills };
+  if (!touches && !reason) reason = contact ? 'Must touch one of your cells' : 'Must touch or overlap one of your cells';
+  return { cells, deletes, ok: !reason, reason, captures, scoreKills };
 }
 
 /* ---------- blueprint edits ---------- */
@@ -194,6 +239,19 @@ export function sanitizeMove(m) {
   return null;
 }
 
+// Contact mode: when a player's turn ends, they bank 1 point per Score cell they have on the board.
+function endOfMove(n, p, info) {
+  n.moveNo++;
+  const st = settingsOf(n);
+  if (st.mode === 'contact' && playerAt(n.moveNo, st.turnOrder) !== p) {
+    if (!n.banked) n.banked = { blue: 0, red: 0 };
+    const gain = scoreCellsOf(n, p);
+    n.banked[p] += gain;
+    info.turnEnded = true;
+    info.banked = gain;
+  }
+}
+
 // Returns { ok, state, info } with a NEW state, or { ok: false, error }.
 export function applyMove(s, move) {
   const m = sanitizeMove(move);
@@ -210,9 +268,14 @@ export function applyMove(s, move) {
       if (ex && ex.owner !== p && ex.type === 'score') n.destroyed[p]++;
       n.board[c.k] = { owner: p, type: c.type };
     }
-    n.lastMove = { player: p, kind: 'place', bp: m.bp, cells: ev.cells.map(c => c.k) };
-    n.moveNo++;
-    return { ok: true, state: n, info: { captures: ev.captures, scoreKills: ev.scoreKills } };
+    for (const d of ev.deletes) {          // Contact mode only
+      if (d.type === 'score') n.destroyed[p]++;
+      delete n.board[d.k];
+    }
+    n.lastMove = { player: p, kind: 'place', bp: m.bp, cells: ev.cells.map(c => c.k), deleted: ev.deletes.map(d => d.k) };
+    const info = { captures: ev.captures, scoreKills: ev.scoreKills };
+    endOfMove(n, p, info);
+    return { ok: true, state: n, info };
   }
   const [fb, fk] = m.from, [tb, tk] = m.to;
   const res = checkEdit(s, p, fb, fk, tb, tk);
@@ -223,8 +286,9 @@ export function applyMove(s, move) {
   delete bps[fb][fk];
   bps[tb][tk] = type;
   n.lastMove = { player: p, kind: 'edit', fromBp: fb, toBp: tb, toKey: tk };
-  n.moveNo++;
-  return { ok: true, state: n, info: {} };
+  const info = {};
+  endOfMove(n, p, info);
+  return { ok: true, state: n, info };
 }
 
 // Rebuild a state from scratch by replaying a move log (used for take-backs).
