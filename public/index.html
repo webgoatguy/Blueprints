@@ -175,6 +175,7 @@
   .seg button i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .seg button[aria-pressed=true] { background: #3a3a3a; border-color: #8a8a8a; color: #fff; }
   .seg.two { grid-template-columns: repeat(2, 1fr); }
+  .seg.three { grid-template-columns: repeat(3, 1fr); }
   .seg.two button { flex-direction: column; gap: 1px; padding: 8px 6px 7px; }
   .seg.two button span { font-weight: 600; letter-spacing: .5px; }
   .seg.two button small { color: var(--muted); font-size: 11px; }
@@ -308,9 +309,10 @@
       <h2>Game options</h2>
       <div class="field">
         <label>Mode</label>
-        <div class="seg two" id="modeSeg">
+        <div class="seg two three" id="modeSeg">
           <button type="button" data-mode="classic" aria-pressed="true"><span>Classic</span><small>Overlap to capture</small></button>
-          <button type="button" data-mode="contact" aria-pressed="false"><span>Contact</span><small>Touch to delete · bank points</small></button>
+          <button type="button" data-mode="contact" aria-pressed="false"><span>Contact</span><small>Touch to delete</small></button>
+          <button type="button" data-mode="buildup" aria-pressed="false"><span>Build-up</span><small>Cells charge up</small></button>
         </div>
         <p class="hint" id="modeHint" style="margin-top:2px"></p>
       </div>
@@ -413,7 +415,7 @@
   </ul>
 
   <h3>Score (Classic mode)</h3>
-  <p>Your Score cells on the board, plus <b><span class="rulesKp">2</span> points</b> for every opponent Score cell you destroyed (by overwriting it with any of your cells). The points per destroyed cell are a game option; the default is 2.</p>
+  <p>Your Score cells on the board, plus <b><span class="rulesKp" data-mode="classic">2</span> points</b> for every opponent Score cell you destroyed (by overwriting it with any of your cells). The points per destroyed cell are a game option; the default is 2.</p>
 
   <h3>Contact mode</h3>
   <p>Same board, blueprints, edits and turn order, with these changes:</p>
@@ -421,8 +423,16 @@
     <li><b>No overlapping.</b> A placement may not cover any existing cell, yours or your opponent’s. It must still touch one of your cells.</li>
     <li><b>Touch to delete.</b> When you place cells, every opponent cell touching your new cells is deleted, unless it is a <b>Wall</b>.</li>
     <li><b>Banking.</b> Each time your turn ends, you bank 1 point for every Score cell you have on the board. The panel shows your current rate, for example <b>+3/turn</b>.</li>
-    <li><b>Kills.</b> Deleting an opponent Score cell is worth <b><span class="rulesKp">20</span> points</b> (a game option; the default is 20).</li>
+    <li><b>Kills.</b> Deleting an opponent Score cell is worth <b><span class="rulesKp" data-mode="contact">20</span> points</b> (a game option; the default is 20).</li>
     <li>Score = banked points + kill points.</li>
+  </ul>
+
+  <h3>Build-up mode</h3>
+  <p>Placement works exactly like Contact mode: no overlapping any cell, your placement must touch one of your cells, and every enemy cell touching your new cells is deleted unless it is a Wall. Scoring is different:</p>
+  <ul>
+    <li><b>Score cells charge up.</b> After every move, by either player (placements and edits), every Score cell on the board gains 1 point for its owner, including a cell placed on that move. Each cell shows its current charge. With 1 · 2 · 2 turns, a cell gains 4 points per full round.</li>
+    <li><b>Deleting steals the charge.</b> When you delete an enemy Score cell, all of its stored points move to you permanently, and your opponent loses them.</li>
+    <li>Score = points stored in your Score cells + points you stole (+ an optional kill bonus, <b><span class="rulesKp" data-mode="buildup">0</span> points</b> by default).</li>
   </ul>
 
   <h3>Cells</h3>

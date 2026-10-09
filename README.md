@@ -70,9 +70,9 @@ so your friend and the server always play by the same rules.
 
 | Option | Choices | Default |
 |---|---|---|
-| Mode | **Classic** or **Contact** (see below) | Classic |
+| Mode | **Classic**, **Contact** or **Build-up** (see below) | Classic |
 | Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value) | Classic 2, Contact 20 |
+| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value) | Classic 2, Contact 20, Build-up 0 |
 
 **Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
 Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
@@ -83,6 +83,17 @@ Score = your Score cells on the board + (enemy Score cells destroyed × kill poi
 - Each time your turn ends, you bank 1 point per Score cell you have on the board.
   The panel shows your current rate, for example `+3/turn`.
 - Score = banked points + (enemy Score cells deleted × kill points, 20 by default).
+
+**Build-up mode:** placement works like Contact (no overlapping; enemy non-wall cells touching your
+new cells are deleted).
+- After every move by either player, placement or edit, every Score cell on the board gains 1 point
+  for its owner. That includes a cell placed on that move. Each cell shows its stored charge.
+  With 1 · 2 · 2 turns, that's 4 points per full round.
+- Deleting an enemy Score cell steals all of its stored points permanently, and your opponent loses them.
+- Score = charge in your Score cells + stolen points (+ optional kill bonus, 0 by default).
+
+Internally, each mode is a placement rule plus a scoring rule (`MODE_RULES` in `public/rules.js`),
+so new combinations are a one-line addition there.
 You can see a game's options in **Rules**, in **Menu**, and in the join dialog your friend sees.
 Games created before these options existed keep their original rules (Classic, 1 point, 1 · 2 · 2 turns).
 

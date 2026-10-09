@@ -37,12 +37,25 @@ export function startBlueprint() {
 //                         the new cells are deleted. At the end of each of your turns you
 //                         bank 1 point per Score cell you have on the board.
 //                         Score = banked points + kills x killPoints.
+//            'buildup' -> Contact placement (no overlap; enemy non-wall cells touching the new
+//                         cells are deleted). After every move (by either player) each Score cell
+//                         on the board charges up by 1 point for its owner. Deleting an enemy
+//                         Score cell steals all of its charge, banked permanently.
+//                         Score = charge in your Score cells + stolen points + kills x killPoints.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
-export const MODES = ['classic', 'contact'];
+export const MODES = ['classic', 'contact', 'buildup'];
+// Each mode = a placement rule + a scoring rule (kept separate so they're easy to recombine).
+const MODE_RULES = {
+  classic: { placement: 'overwrite', scoring: 'count' },
+  contact: { placement: 'contact', scoring: 'bank' },
+  buildup: { placement: 'contact', scoring: 'buildup' },
+};
+export const placementOf = s => MODE_RULES[modeOf(s)].placement;
+export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
 export const TURN_ORDERS = ['122', '1111'];
-export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20 };
+export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0 };
 export const DEFAULT_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 2 };
 const LEGACY_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 1 }; // games saved before options existed
 export const MAX_KILL_POINTS = 100;
@@ -120,17 +133,28 @@ export function scoreCellsOf(s, p) {
   return n;
 }
 
-// Classic: Score = your Score cells on the board + killPoints x enemy Score cells destroyed.
-// Contact: Score = points banked at the end of your turns + killPoints x enemy Score cells destroyed.
+// Build-up mode: total charge stored in a player's Score cells on the board.
+export function chargeOf(s, p) {
+  let n = 0;
+  for (const k in s.board) { const c = s.board[k]; if (c.type === 'score' && c.owner === p) n += c.pts || 0; }
+  return n;
+}
+
+// Classic:  Score = your Score cells on the board + killPoints x enemy Score cells destroyed.
+// Contact:  Score = points banked at the end of your turns + kills x killPoints.
+// Build-up: Score = charge in your Score cells + banked (stolen/kept) charge + kills x killPoints.
 export function getScores(s) {
   const { killPoints: kp, mode } = settingsOf(s);
+  const scoring = scoringOf(s);
   const out = {};
   for (const p of PLAYERS) {
     const onBoard = scoreCellsOf(s, p);
     const kills = s.destroyed[p];
     const banked = (s.banked && s.banked[p]) || 0;
-    const base = mode === 'contact' ? banked : onBoard;
-    out[p] = { mode, onBoard, banked, perTurn: onBoard, destroyed: kills, killPoints: kp, killScore: kills * kp, total: base + kills * kp };
+    const charge = scoring === 'buildup' ? chargeOf(s, p) : 0;
+    const base = scoring === 'bank' ? banked : scoring === 'buildup' ? charge + banked : onBoard;
+    out[p] = { mode, scoring, onBoard, banked, charge, perTurn: onBoard, perMove: onBoard,
+      destroyed: kills, killPoints: kp, killScore: kills * kp, total: base + kills * kp };
   }
   return out;
 }
@@ -140,7 +164,7 @@ export function getScores(s) {
 // Stamp blueprint `bpIdx` so that its cell `handleKey` lands on board hex (hq, hr).
 // Returns each stamped cell with a status, plus (Contact mode) the enemy cells that would be deleted.
 export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
-  const contact = modeOf(s) === 'contact';
+  const contact = placementOf(s) === 'contact';
   const bp = s.blueprints[player][bpIdx];
   const [aq, ar] = unkey(handleKey);
   const cells = [];
@@ -154,7 +178,10 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
     if (ex && contact) {
       // Contact mode: no overlapping anything.
       status = 'blocked';
-      if (!reason) reason = ex.owner === player ? 'Can’t overlap your own cells in Contact mode' : 'Can’t overlap opponent cells in Contact mode';
+      if (!reason) {
+        const m = modeOf(s) === 'buildup' ? 'Build-up' : 'Contact';
+        reason = ex.owner === player ? `Can’t overlap your own cells in ${m} mode` : `Can’t overlap opponent cells in ${m} mode`;
+      }
     } else if (ex) {
       if (ex.owner === player) { status = 'own'; touches = true; }
       // Any cell type can overwrite an opponent cell, unless that cell is a wall.
@@ -185,16 +212,27 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
         if (seen.has(nk)) continue;
         seen.add(nk);
         const n = s.board[nk];
-        if (n && n.owner !== player && n.type !== 'wall') deletes.push({ k: nk, q: nq, r: nr, type: n.type });
+        if (n && n.owner !== player && n.type !== 'wall') deletes.push({ k: nk, q: nq, r: nr, type: n.type, pts: n.pts || 0 });
       }
     }
     captures = deletes.length;
     scoreKills = deletes.filter(d => d.type === 'score').length;
   }
 
+  // Build-up mode: charge stolen from enemy Score cells / kept from your own overwritten ones.
+  let stolen = 0, kept = 0;
+  if (scoringOf(s) === 'buildup') {
+    for (const c of cells) {
+      const ex = s.board[c.k];
+      if (!ex || ex.type !== 'score' || c.status === 'blocked') continue;
+      if (ex.owner === player) kept += ex.pts || 0; else stolen += ex.pts || 0;
+    }
+    for (const d of deletes) if (d.type === 'score') stolen += d.pts;
+  }
+
   if (!cells.length && !reason) reason = 'That blueprint is empty';
   if (!touches && !reason) reason = contact ? 'Must touch one of your cells' : 'Must touch or overlap one of your cells';
-  return { cells, deletes, ok: !reason, reason, captures, scoreKills };
+  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept };
 }
 
 /* ---------- blueprint edits ---------- */
@@ -239,16 +277,22 @@ export function sanitizeMove(m) {
   return null;
 }
 
-// Contact mode: when a player's turn ends, they bank 1 point per Score cell they have on the board.
+// After every move:
+//   Contact:  when a player's turn ends, they bank 1 point per Score cell they have on the board.
+//   Build-up: every Score cell on the board (both players') charges up by 1 point.
 function endOfMove(n, p, info) {
   n.moveNo++;
   const st = settingsOf(n);
-  if (st.mode === 'contact' && playerAt(n.moveNo, st.turnOrder) !== p) {
-    if (!n.banked) n.banked = { blue: 0, red: 0 };
+  const scoring = scoringOf(n);
+  if (!n.banked) n.banked = { blue: 0, red: 0 };
+  if (scoring === 'bank' && playerAt(n.moveNo, st.turnOrder) !== p) {
     const gain = scoreCellsOf(n, p);
     n.banked[p] += gain;
     info.turnEnded = true;
     info.banked = gain;
+  }
+  if (scoring === 'buildup') {
+    for (const k in n.board) { const c = n.board[k]; if (c.type === 'score') c.pts = (c.pts || 0) + 1; }
   }
 }
 
@@ -263,17 +307,21 @@ export function applyMove(s, move) {
     const ev = evalPlacement(s, p, m.bp, m.h, m.at[0], m.at[1]);
     if (!ev.ok) return { ok: false, error: ev.reason };
     const n = clone(s);
+    if (!n.banked) n.banked = { blue: 0, red: 0 };
     for (const c of ev.cells) {
       const ex = n.board[c.k];
       if (ex && ex.owner !== p && ex.type === 'score') n.destroyed[p]++;
-      n.board[c.k] = { owner: p, type: c.type };
+      n.board[c.k] = c.type === 'score' && scoringOf(s) === 'buildup'
+        ? { owner: p, type: 'score', pts: 0 }
+        : { owner: p, type: c.type };
     }
-    for (const d of ev.deletes) {          // Contact mode only
+    for (const d of ev.deletes) {          // Contact placement only
       if (d.type === 'score') n.destroyed[p]++;
       delete n.board[d.k];
     }
+    n.banked[p] += ev.stolen + ev.kept;   // Build-up: the charge moves to whoever broke the cell
     n.lastMove = { player: p, kind: 'place', bp: m.bp, cells: ev.cells.map(c => c.k), deleted: ev.deletes.map(d => d.k) };
-    const info = { captures: ev.captures, scoreKills: ev.scoreKills };
+    const info = { captures: ev.captures, scoreKills: ev.scoreKills, stolen: ev.stolen, kept: ev.kept };
     endOfMove(n, p, info);
     return { ok: true, state: n, info };
   }

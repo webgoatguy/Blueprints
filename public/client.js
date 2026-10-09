@@ -75,9 +75,31 @@ function drawIcon(ctx, cx, cy, s, type) {
   // attack cells are intentionally drawn blank (no icon)
 }
 
-function drawCell(ctx, cx, cy, s, owner, type, alpha) {
+function drawCell(ctx, cx, cy, s, owner, type, alpha, label) {
   const a = alpha == null ? 1 : alpha;
   if (a !== 1) { ctx.save(); ctx.globalAlpha = a; }
+  if (label != null && s >= 11) {
+    // Build-up mode: Score cell showing its stored charge (faint star behind a number)
+    hexPath(ctx, cx, cy, s);
+    ctx.fillStyle = COL[owner][type];
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, s * 0.1);
+    ctx.strokeStyle = GRID;
+    ctx.stroke();
+    ctx.save();
+    ctx.globalAlpha *= 0.28;
+    drawIcon(ctx, cx, cy, s * 1.25, type);
+    ctx.restore();
+    const txt = String(label);
+    const fs = s * (txt.length <= 2 ? 0.66 : txt.length === 3 ? 0.52 : 0.42);
+    ctx.font = `800 ${fs}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(txt, cx, cy + fs * 0.05);
+    if (a !== 1) ctx.restore();
+    return;
+  }
   hexPath(ctx, cx, cy, s);
   ctx.fillStyle = COL[owner][type];
   ctx.fill();
@@ -281,7 +303,14 @@ function renderPanels() {
     P.total.textContent = sc[p].total;
     const s = sc[p];
     const killTxt = `${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
-    if (s.mode === 'contact') {
+    if (s.scoring === 'buildup') {
+      P.sub.textContent = `${s.charge} charging + ${s.banked} stolen` + (s.killPoints ? ` + ${s.killScore} kill` : '');
+      P.sub.title = `${s.charge} points stored in ${s.onBoard} Score cell${s.onBoard === 1 ? '' : 's'} on the board (lost to the opponent if they delete them)` +
+        ` + ${s.banked} stolen from deleted enemy Score cells (kept permanently)` +
+        (s.killPoints ? ` + ${killTxt}` : '') + `.\nYour Score cells gain +${s.perMove} in total after every move.`;
+      P.inc.textContent = `+${s.perMove}/move`;
+      P.inc.hidden = false;
+    } else if (s.scoring === 'bank') {
       P.sub.textContent = `${s.banked} banked + ${s.killScore} kill pts`;
       P.sub.title = `${s.banked} points banked at the ends of turns + ${killTxt}.\n${s.perTurn} Score cell${s.perTurn === 1 ? '' : 's'} on the board → +${s.perTurn} at the end of each turn.`;
       P.inc.textContent = `+${s.perTurn}/turn`;
@@ -425,11 +454,12 @@ function renderBoard() {
 
   // cells
   const vis = (x, y) => x > -2 * s && x < w + 2 * s && y > -2 * s && y < h + 2 * s;
+  const showCharge = R.scoringOf(G) === 'buildup';
   for (const k in G.board) {
     const [q, r] = unkey(k), x = X(q, r), y = Y(r);
     if (!vis(x, y)) continue;
     const c = G.board[k];
-    drawCell(ctx, x, y, s, c.owner, c.type);
+    drawCell(ctx, x, y, s, c.owner, c.type, 1, showCharge && c.type === 'score' ? (c.pts || 0) : null);
   }
 
   // last placement
@@ -505,8 +535,7 @@ function renderStatus() {
   } else if (UI.selected && canAct(p)) {
     const ev = ghostEval(), name = `Blueprint ${UI.selected.bp + 1}`;
     if (!ev) html = `${who}: placing <b>${name}</b> — ${touch ? 'tap a hex to preview' : 'hover the board'} · Esc to cancel`;
-    else if (ev.ok) html = `<span class="ok">Legal</span>` +
-      (ev.captures ? ` · ${R.modeOf(G) === 'contact' ? 'deletes' : 'captures'} ${ev.captures}${ev.scoreKills ? ` (${ev.scoreKills} score, +${ev.scoreKills * R.settingsOf(G).killPoints} pts)` : ''}` : '') +
+    else if (ev.ok) html = `<span class="ok">Legal</span>` + esc(gainText(ev)) +
       ` · ${touch ? 'tap the same hex again to place' : 'click to place'}`;
     else html = `<span class="err">${esc(ev.reason)}</span>`;
   } else if (canAct(p)) {
@@ -563,6 +592,24 @@ function hexAtClient(cx, cy) {
   return unitToHex((x - rect.width / 2 - cam.x) / cam.size, (y - rect.height / 2 - cam.y) / cam.size);
 }
 
+/* ---------- describing captures (preview + toasts) ---------- */
+function captureDetails(x, past) {
+  const kp = R.settingsOf(G).killPoints, det = [];
+  if (x.scoreKills) det.push(`${x.scoreKills} score`);
+  if (x.stolen) det.push(`${past ? 'stole' : 'steals'} ${x.stolen} pts`);
+  if (x.scoreKills && kp) det.push(`+${x.scoreKills * kp} pts`);
+  return det;
+}
+function gainText(ev) {
+  let t = '';
+  if (ev.captures) {
+    const det = captureDetails(ev);
+    t += ` · ${R.placementOf(G) === 'contact' ? 'deletes' : 'captures'} ${ev.captures}${det.length ? ` (${det.join(', ')})` : ''}`;
+  }
+  if (ev.kept) t += ` · keeps ${ev.kept} pts`;
+  return t;
+}
+
 /* ---------- making moves ---------- */
 async function commit(move) {
   const r = R.applyMove(G, move);
@@ -571,9 +618,11 @@ async function commit(move) {
   const who = move.p === Net.seat && isOnline() ? 'You' : NAME[move.p];
   const parts = [];
   if (info.captures) {
-    parts.push(`${who} ${R.modeOf(G) === 'contact' ? 'deleted' : 'captured'} ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
-      (info.scoreKills ? ` (${info.scoreKills} score, +${info.scoreKills * R.settingsOf(G).killPoints} pts)` : ''));
+    const det = captureDetails(info, true);
+    parts.push(`${who} ${R.placementOf(G) === 'contact' ? 'deleted' : 'captured'} ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
+      (det.length ? ` (${det.join(', ')})` : ''));
   }
+  if (info.kept) parts.push(`${parts.length ? 'kept' : `${who} kept`} ${info.kept} pts from overwritten Score cells`);
   if (info.turnEnded) parts.push(`${parts.length ? 'turn over' : 'Turn over'}: +${info.banked} banked`);
   const captureMsg = parts.length ? parts.join(' · ') : null;
 
@@ -896,7 +945,12 @@ function startLocal() {
 }
 
 /* ---------- game options (mode, turn order, kill points) ---------- */
-const MODE_LABEL = { classic: 'Classic', contact: 'Contact' };
+const MODE_LABEL = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up' };
+const MODE_HINT = {
+  classic: 'Classic: stamps may overlap. Your cells overwrite enemy cells (except walls). Score = Score cells on the board + kills.',
+  contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
+  buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
+};
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {
   return `${MODE_LABEL[st.mode] || 'Classic'} mode · turns ${ORDER_LABEL[st.turnOrder]} · ` +
@@ -935,14 +989,15 @@ function renderOptions() {
   if (document.activeElement !== $('kpVal') || Number($('kpVal').value) !== kp) $('kpVal').value = kp;
   $('kpMinus').disabled = kp <= 0;
   $('kpPlus').disabled = kp >= R.MAX_KILL_POINTS;
-  $('modeHint').textContent = lobbyOpts.mode === 'contact'
-    ? 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.'
-    : 'Classic: stamps may overlap. Your cells overwrite enemy cells (except walls). Score = Score cells on the board + kills.';
+  $('modeHint').textContent = MODE_HINT[lobbyOpts.mode] || '';
 }
 function fillRulesDialog() {
   const st = App.mode ? R.settingsOf(G) : chosenSettings();
   $('rulesThis').textContent = (App.mode ? 'This game: ' : 'Selected options: ') + settingsText(st);
-  for (const el of document.querySelectorAll('.rulesKp')) el.textContent = st.killPoints;
+  // Each mode's section shows this game's value if it's that mode, otherwise that mode's default.
+  for (const el of document.querySelectorAll('.rulesKp')) {
+    el.textContent = el.dataset.mode === st.mode ? st.killPoints : R.DEFAULT_KILL_POINTS[el.dataset.mode];
+  }
 }
 
 function openMenu() {
