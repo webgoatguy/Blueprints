@@ -79,19 +79,15 @@ function drawCell(ctx, cx, cy, s, owner, type, alpha, label) {
   const a = alpha == null ? 1 : alpha;
   if (a !== 1) { ctx.save(); ctx.globalAlpha = a; }
   if (label != null && s >= 11) {
-    // Build-up mode: Score cell showing its stored charge (faint star behind a number)
+    // Build-up mode: Score cell showing its stored charge as a number (no star, for readability)
     hexPath(ctx, cx, cy, s);
     ctx.fillStyle = COL[owner][type];
     ctx.fill();
     ctx.lineWidth = Math.max(1, s * 0.1);
     ctx.strokeStyle = GRID;
     ctx.stroke();
-    ctx.save();
-    ctx.globalAlpha *= 0.28;
-    drawIcon(ctx, cx, cy, s * 1.25, type);
-    ctx.restore();
     const txt = String(label);
-    const fs = s * (txt.length <= 2 ? 0.66 : txt.length === 3 ? 0.52 : 0.42);
+    const fs = s * (txt.length <= 2 ? 0.84 : txt.length === 3 ? 0.66 : 0.52);
     ctx.font = `800 ${fs}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -216,12 +212,13 @@ function buildPanels() {
       <div class="phead">
         <div class="pname"><span class="dot" style="background:${COL[p].main}"></span>${NAME[p]}<span class="badge">to move</span></div>
         <div class="pplayer"></div>
-        <div class="score"><span class="inc"></span><b></b></div>
+        <span class="inc" hidden></span>
+        <div class="score"><b></b></div>
         <small class="breakdown"></small>
       </div>
       <div class="cards"></div>`;
     PANEL[p] = { el, badge: el.querySelector('.badge'), player: el.querySelector('.pplayer'),
-      total: el.querySelector('.score b'), inc: el.querySelector('.score .inc'), sub: el.querySelector('.breakdown') };
+      total: el.querySelector('.score b'), inc: el.querySelector('.inc'), sub: el.querySelector('.breakdown') };
     const cards = el.querySelector('.cards');
     BP[p] = [];
     for (let b = 0; b < 3; b++) {
