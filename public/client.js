@@ -78,7 +78,7 @@ function drawIcon(ctx, cx, cy, s, type) {
 function drawCell(ctx, cx, cy, s, owner, type, alpha, label) {
   const a = alpha == null ? 1 : alpha;
   if (a !== 1) { ctx.save(); ctx.globalAlpha = a; }
-  if (label != null && s >= 11) {
+  if (label != null && s >= 9) {
     // Build-up mode: Score cell showing its stored charge as a number (no star, for readability)
     hexPath(ctx, cx, cy, s);
     ctx.fillStyle = COL[owner][type];
@@ -942,11 +942,12 @@ function startLocal() {
 }
 
 /* ---------- game options (mode, turn order, kill points) ---------- */
-const MODE_LABEL = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up' };
+const MODE_LABEL = R.MODE_NAMES;
 const MODE_HINT = {
   classic: 'Classic: stamps may overlap. Your cells overwrite enemy cells (except walls). Score = Score cells on the board + kills.',
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
+  buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board (Score cells start at 1 point), and the three blueprints are 120° rotations of each other.',
 };
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {

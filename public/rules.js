@@ -23,12 +23,28 @@ export const other = p => (p === 'blue' ? 'red' : 'blue');
 
 /* ---------- setup ---------- */
 
-// Starting blueprint: 7-cell flower. Centre = wall, left & right = score, other four = attack.
-export function startBlueprint() {
+// Pointy-top hexes: the six neighbours, in the same order as DIRS.
+const DIR_NAMES = ['E', 'NE', 'NW', 'W', 'SW', 'SE'];
+const AXES = { EW: ['E', 'W'], NWSE: ['NW', 'SE'], NESW: ['NE', 'SW'] };
+
+// Starting blueprint: 7-cell flower. Centre = wall, the two cells on `axis` = score, other four = attack.
+// Default axis 'EW' (left & right) is the original blueprint.
+export function startBlueprint(axis = 'EW') {
+  const scoreDirs = AXES[axis];
   const o = { [key(0, 0)]: 'wall' };
-  for (const [dq, dr] of DIRS) o[key(dq, dr)] = dr === 0 ? 'score' : 'attack';
+  DIRS.forEach(([dq, dr], i) => { o[key(dq, dr)] = scoreDirs.includes(DIR_NAMES[i]) ? 'score' : 'attack'; });
   return o;
 }
+
+// Build-up II start: each side's three blueprints (120° rotations of each other) are already on
+// the board in a vertical column, bp1 on top. Each one is 2 NE + 2 NW from the one below it.
+// Red's column is the same shape 12 cells east, with Red's own (mirrored) blueprints.
+const FORMATION = {
+  blue: { axes: ['NWSE', 'EW', 'NESW'], middle: [-6, 0] },
+  red: { axes: ['NESW', 'EW', 'NWSE'], middle: [6, 0] },
+};
+const STACK_STEP = [2, -4];          // 2 x NE (1,-1) + 2 x NW (0,-1)
+const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 point
 
 /* ---------- game options (chosen when a game is created) ---------- */
 // mode:      'classic' -> stamps may overlap; your cells overwrite enemy non-wall cells.
@@ -42,20 +58,25 @@ export function startBlueprint() {
 //                         on the board charges up by 1 point for its owner. Deleting an enemy
 //                         Score cell steals all of its charge, banked permanently.
 //                         Score = charge in your Score cells + stolen points + kills x killPoints.
+//            'buildup2' -> Build-up rules, but each player's three blueprints are rotated 120°
+//                         from each other and start already placed on the board (see FORMATION);
+//                         the starting Score cells hold 1 point.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
-export const MODES = ['classic', 'contact', 'buildup'];
-// Each mode = a placement rule + a scoring rule (kept separate so they're easy to recombine).
+export const MODES = ['classic', 'contact', 'buildup', 'buildup2'];
+export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II' };
+// Each mode = a placement rule + a scoring rule + a starting setup (kept separate so they're easy to recombine).
 const MODE_RULES = {
-  classic: { placement: 'overwrite', scoring: 'count' },
-  contact: { placement: 'contact', scoring: 'bank' },
-  buildup: { placement: 'contact', scoring: 'buildup' },
+  classic: { placement: 'overwrite', scoring: 'count', start: 'walls' },
+  contact: { placement: 'contact', scoring: 'bank', start: 'walls' },
+  buildup: { placement: 'contact', scoring: 'buildup', start: 'walls' },
+  buildup2: { placement: 'contact', scoring: 'buildup', start: 'formation' },
 };
 export const placementOf = s => MODE_RULES[modeOf(s)].placement;
 export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
 export const TURN_ORDERS = ['122', '1111'];
-export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0 };
+export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0 };
 export const DEFAULT_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 2 };
 const LEGACY_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 1 }; // games saved before options existed
 export const MAX_KILL_POINTS = 100;
@@ -75,21 +96,38 @@ export const settingsOf = s => (s && s.settings ? { mode: 'classic', ...s.settin
 export const modeOf = s => settingsOf(s).mode;
 
 export function newState(settings) {
-  return {
-    settings: normalizeSettings(settings),
+  const st = normalizeSettings(settings);
+  const s = {
+    settings: st,
     moveNo: 0,
-    board: {
-      [key(-3, 0)]: { owner: 'blue', type: 'wall' },
-      [key(3, 0)]: { owner: 'red', type: 'wall' },
-    },
-    blueprints: {
-      blue: [startBlueprint(), startBlueprint(), startBlueprint()],
-      red: [startBlueprint(), startBlueprint(), startBlueprint()],
-    },
+    board: {},
+    blueprints: {},
     destroyed: { blue: 0, red: 0 },
-    banked: { blue: 0, red: 0 },   // Contact mode: points banked at the end of each turn
+    banked: { blue: 0, red: 0 },   // Contact: points banked each turn; Build-up: stolen charge
     lastMove: null,
   };
+  if (MODE_RULES[st.mode].start === 'formation') {
+    for (const p of PLAYERS) {
+      const f = FORMATION[p];
+      s.blueprints[p] = f.axes.map(a => startBlueprint(a));
+      s.blueprints[p].forEach((bp, i) => {
+        const lift = 1 - i;   // bp1 one step up, bp2 in the middle, bp3 one step down
+        const cq = f.middle[0] + lift * STACK_STEP[0], cr = f.middle[1] + lift * STACK_STEP[1];
+        for (const k in bp) {
+          const [q, r] = unkey(k);
+          s.board[key(cq + q, cr + r)] = bp[k] === 'score'
+            ? { owner: p, type: 'score', pts: FORMATION_START_PTS }
+            : { owner: p, type: bp[k] };
+        }
+      });
+    }
+  } else {
+    s.board[key(-3, 0)] = { owner: 'blue', type: 'wall' };
+    s.board[key(3, 0)] = { owner: 'red', type: 'wall' };
+    s.blueprints.blue = [startBlueprint(), startBlueprint(), startBlueprint()];
+    s.blueprints.red = [startBlueprint(), startBlueprint(), startBlueprint()];
+  }
+  return s;
 }
 
 /* ---------- turn order ---------- */
@@ -179,7 +217,7 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
       // Contact mode: no overlapping anything.
       status = 'blocked';
       if (!reason) {
-        const m = modeOf(s) === 'buildup' ? 'Build-up' : 'Contact';
+        const m = MODE_NAMES[modeOf(s)];
         reason = ex.owner === player ? `Can’t overlap your own cells in ${m} mode` : `Can’t overlap opponent cells in ${m} mode`;
       }
     } else if (ex) {

@@ -70,9 +70,9 @@ so your friend and the server always play by the same rules.
 
 | Option | Choices | Default |
 |---|---|---|
-| Mode | **Classic**, **Contact** or **Build-up** (see below) | Classic |
+| Mode | **Classic**, **Contact**, **Build-up** or **Build-up II** (see below) | Classic |
 | Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value) | Classic 2, Contact 20, Build-up 0 |
+| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
 
 **Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
 Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
@@ -92,8 +92,15 @@ new cells are deleted).
 - Deleting an enemy Score cell steals all of its stored points permanently, and your opponent loses them.
 - Score = charge in your Score cells + stolen points (+ optional kill bonus, 0 by default).
 
-Internally, each mode is a placement rule plus a scoring rule (`MODE_RULES` in `public/rules.js`),
-so new combinations are a one-line addition there.
+**Build-up II mode:** the same rules as Build-up, with a different start.
+- Each player's three blueprints are 120° rotations of each other. Blue's have Score cells on
+  NW–SE, E–W and NE–SW. Red's are the mirror image: NE–SW, E–W and NW–SE.
+- There are no starting Walls. Each side's three blueprints start on the board in a vertical
+  column, blueprint 1 on top, each one 2 NE + 2 NW from the one below. Red's column is 12 cells east.
+- The starting Score cells hold 1 point each (2 after Blue's first move).
+
+Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in
+`public/rules.js`). The Build-up II layout is `FORMATION` in the same file.
 You can see a game's options in **Rules**, in **Menu**, and in the join dialog your friend sees.
 Games created before these options existed keep their original rules (Classic, 1 point, 1 · 2 · 2 turns).
 
