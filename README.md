@@ -93,8 +93,8 @@ new cells are deleted).
 - Score = charge in your Score cells + stolen points (+ optional kill bonus, 0 by default).
 
 **Build-up II mode:** the same rules as Build-up, with a different start.
-- Each player's three blueprints are 120° rotations of each other. Blue's have Score cells on
-  NW–SE, E–W and NE–SW. Red's are the mirror image: NE–SW, E–W and NW–SE.
+- Starting blueprints, the same for both players: blueprint 2 is a Wall surrounded by 6 Score
+  cells, and blueprints 1 and 3 are a Wall surrounded by 6 plain (Attack) cells.
 - There are no starting Walls. Each side's three blueprints start on the board in a vertical
   column, blueprint 1 on top, each one 2 NE + 2 NW from the one below. Red's column is 12 cells east.
 - The starting Score cells hold 1 point each (2 after Blue's first move).

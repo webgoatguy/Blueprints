@@ -947,7 +947,7 @@ const MODE_HINT = {
   classic: 'Classic: stamps may overlap. Your cells overwrite enemy cells (except walls). Score = Score cells on the board + kills.',
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
-  buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board (Score cells start at 1 point), and the three blueprints are 120° rotations of each other.',
+  buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
 };
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {

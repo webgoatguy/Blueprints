@@ -36,12 +36,20 @@ export function startBlueprint(axis = 'EW') {
   return o;
 }
 
-// Build-up II start: each side's three blueprints (120° rotations of each other) are already on
-// the board in a vertical column, bp1 on top. Each one is 2 NE + 2 NW from the one below it.
-// Red's column is the same shape 12 cells east, with Red's own (mirrored) blueprints.
+// A wall surrounded by six cells of one type.
+export function ringBlueprint(type) {
+  const o = { [key(0, 0)]: 'wall' };
+  for (const [dq, dr] of DIRS) o[key(dq, dr)] = type;
+  return o;
+}
+
+// Build-up II start: each side's three blueprints are already on the board in a vertical column,
+// bp1 on top. Each one is 2 NE + 2 NW from the one below it. Red's column is 12 cells east.
+// Blueprint 2 = wall + 6 Score cells; blueprints 1 and 3 = wall + 6 plain (attack) cells.
+const FORMATION_BLUEPRINTS = () => [ringBlueprint('attack'), ringBlueprint('score'), ringBlueprint('attack')];
 const FORMATION = {
-  blue: { axes: ['NWSE', 'EW', 'NESW'], middle: [-6, 0] },
-  red: { axes: ['NESW', 'EW', 'NWSE'], middle: [6, 0] },
+  blue: { middle: [-6, 0] },
+  red: { middle: [6, 0] },
 };
 const STACK_STEP = [2, -4];          // 2 x NE (1,-1) + 2 x NW (0,-1)
 const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 point
@@ -58,9 +66,9 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //                         on the board charges up by 1 point for its owner. Deleting an enemy
 //                         Score cell steals all of its charge, banked permanently.
 //                         Score = charge in your Score cells + stolen points + kills x killPoints.
-//            'buildup2' -> Build-up rules, but each player's three blueprints are rotated 120°
-//                         from each other and start already placed on the board (see FORMATION);
-//                         the starting Score cells hold 1 point.
+//            'buildup2' -> Build-up rules, but blueprint 2 is a wall ringed by 6 Score cells and
+//                         blueprints 1 and 3 are a wall ringed by 6 plain cells; all three start
+//                         already placed on the board (see FORMATION). Starting Score cells hold 1 point.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
@@ -109,7 +117,7 @@ export function newState(settings) {
   if (MODE_RULES[st.mode].start === 'formation') {
     for (const p of PLAYERS) {
       const f = FORMATION[p];
-      s.blueprints[p] = f.axes.map(a => startBlueprint(a));
+      s.blueprints[p] = FORMATION_BLUEPRINTS();
       s.blueprints[p].forEach((bp, i) => {
         const lift = 1 - i;   // bp1 one step up, bp2 in the middle, bp3 one step down
         const cq = f.middle[0] + lift * STACK_STEP[0], cr = f.middle[1] + lift * STACK_STEP[1];
