@@ -5,7 +5,7 @@
 
 export const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 export const PLAYERS = ['blue', 'red'];
-export const TYPES = ['wall', 'score', 'attack'];
+export const TYPES = ['wall', 'score', 'fragile', 'attack'];   // 'fragile' only appears in Fragile mode
 export const MAX_LOG = 1500; // hard cap on moves per game
 const COORD_LIMIT = 5000;   // keeps coordinates sane
 
@@ -46,7 +46,8 @@ export function ringBlueprint(type) {
 // Build-up II start: each side's three blueprints are already on the board in a vertical column,
 // bp1 on top. Each one is 2 NE + 2 NW from the one below it. Red's column is 12 cells east.
 // Blueprint 2 = wall + 6 Score cells; blueprints 1 and 3 = wall + 6 plain (attack) cells.
-const FORMATION_BLUEPRINTS = () => [ringBlueprint('attack'), ringBlueprint('score'), ringBlueprint('attack')];
+// In Fragile mode the Score ring becomes a Fragile ring.
+const FORMATION_BLUEPRINTS = (core = 'score') => [ringBlueprint('attack'), ringBlueprint(core), ringBlueprint('attack')];
 const FORMATION = {
   blue: { middle: [-6, 0] },
   red: { middle: [6, 0] },
@@ -69,22 +70,28 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //            'buildup2' -> Build-up rules, but blueprint 2 is a wall ringed by 6 Score cells and
 //                         blueprints 1 and 3 are a wall ringed by 6 plain cells; all three start
 //                         already placed on the board (see FORMATION). Starting Score cells hold 1 point.
+//            'fragile'  -> Build-up II's start and Contact placement, but Score cells are replaced
+//                         by Fragile cells. Destroying a Fragile cell destroys that player's whole
+//                         connected blob of Fragile cells (chain reaction, same colour only).
+//                         Score = size of your largest Fragile blob right now.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
-export const MODES = ['classic', 'contact', 'buildup', 'buildup2'];
-export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II' };
+export const MODES = ['classic', 'contact', 'buildup', 'buildup2', 'fragile'];
+export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II', fragile: 'Fragile' };
 // Each mode = a placement rule + a scoring rule + a starting setup (kept separate so they're easy to recombine).
 const MODE_RULES = {
   classic: { placement: 'overwrite', scoring: 'count', start: 'walls' },
   contact: { placement: 'contact', scoring: 'bank', start: 'walls' },
   buildup: { placement: 'contact', scoring: 'buildup', start: 'walls' },
   buildup2: { placement: 'contact', scoring: 'buildup', start: 'formation' },
+  fragile: { placement: 'contact', scoring: 'blob', start: 'formation', core: 'fragile' },
 };
 export const placementOf = s => MODE_RULES[modeOf(s)].placement;
 export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
+export const usesKillPoints = mode => MODE_RULES[mode].scoring !== 'blob';
 export const TURN_ORDERS = ['122', '1111'];
-export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0 };
+export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0, fragile: 0 };
 export const DEFAULT_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 2 };
 const LEGACY_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 1 }; // games saved before options existed
 export const MAX_KILL_POINTS = 100;
@@ -117,7 +124,7 @@ export function newState(settings) {
   if (MODE_RULES[st.mode].start === 'formation') {
     for (const p of PLAYERS) {
       const f = FORMATION[p];
-      s.blueprints[p] = FORMATION_BLUEPRINTS();
+      s.blueprints[p] = FORMATION_BLUEPRINTS(MODE_RULES[st.mode].core);
       s.blueprints[p].forEach((bp, i) => {
         const lift = 1 - i;   // bp1 one step up, bp2 in the middle, bp3 one step down
         const cq = f.middle[0] + lift * STACK_STEP[0], cr = f.middle[1] + lift * STACK_STEP[1];
@@ -186,9 +193,33 @@ export function chargeOf(s, p) {
   return n;
 }
 
+// Fragile mode: sizes of a player's connected blobs of Fragile cells, largest first.
+// `gone` is an optional set of keys to treat as already removed (used for previews).
+export function fragileBlobs(board, p, gone) {
+  const seen = new Set(), sizes = [];
+  for (const k in board) {
+    const c = board[k];
+    if (c.type !== 'fragile' || c.owner !== p || seen.has(k) || (gone && gone.has(k))) continue;
+    let n = 0;
+    const stack = [k];
+    seen.add(k);
+    while (stack.length) {
+      const [q, r] = unkey(stack.pop());
+      n++;
+      for (const [dq, dr] of DIRS) {
+        const nk = key(q + dq, r + dr), nc = board[nk];
+        if (nc && nc.type === 'fragile' && nc.owner === p && !seen.has(nk) && !(gone && gone.has(nk))) { seen.add(nk); stack.push(nk); }
+      }
+    }
+    sizes.push(n);
+  }
+  return sizes.sort((a, b) => b - a);
+}
+
 // Classic:  Score = your Score cells on the board + killPoints x enemy Score cells destroyed.
 // Contact:  Score = points banked at the end of your turns + kills x killPoints.
 // Build-up: Score = charge in your Score cells + banked (stolen/kept) charge + kills x killPoints.
+// Fragile:  Score = size of your largest Fragile blob.
 export function getScores(s) {
   const { killPoints: kp, mode } = settingsOf(s);
   const scoring = scoringOf(s);
@@ -197,6 +228,12 @@ export function getScores(s) {
     const onBoard = scoreCellsOf(s, p);
     const kills = s.destroyed[p];
     const banked = (s.banked && s.banked[p]) || 0;
+    if (scoring === 'blob') {
+      const blobs = fragileBlobs(s.board, p);
+      const fragile = blobs.reduce((a, b) => a + b, 0);
+      out[p] = { mode, scoring, blobs, fragile, largest: blobs[0] || 0, total: blobs[0] || 0 };
+      continue;
+    }
     const charge = scoring === 'buildup' ? chargeOf(s, p) : 0;
     const base = scoring === 'bank' ? banked : scoring === 'buildup' ? charge + banked : onBoard;
     out[p] = { mode, scoring, onBoard, banked, charge, perTurn: onBoard, perMove: onBoard,
@@ -261,9 +298,39 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
         if (n && n.owner !== player && n.type !== 'wall') deletes.push({ k: nk, q: nq, r: nr, type: n.type, pts: n.pts || 0 });
       }
     }
+  }
+
+  // Fragile chain reaction: every destroyed Fragile cell takes its owner's whole connected
+  // Fragile blob with it (same colour only). Works for both placement rules.
+  const chainSeeds = [
+    ...deletes.filter(d => d.type === 'fragile').map(d => d.k),
+    ...cells.filter(c => c.status === 'capture' && s.board[c.k].type === 'fragile').map(c => c.k),
+  ];
+  if (chainSeeds.length) {
+    const stamped = new Set(cells.map(c => c.k));
+    const listed = new Set([...deletes.map(d => d.k), ...chainSeeds]);
+    const stack = [...chainSeeds];
+    while (stack.length) {
+      const k = stack.pop(), owner = s.board[k].owner;
+      const [q, r] = unkey(k);
+      for (const [dq, dr] of DIRS) {
+        const nq = q + dq, nr = r + dr, nk = key(nq, nr), n = s.board[nk];
+        if (!n || n.type !== 'fragile' || n.owner !== owner || listed.has(nk)) continue;
+        listed.add(nk);
+        stack.push(nk);
+        if (!stamped.has(nk)) deletes.push({ k: nk, q: nq, r: nr, type: 'fragile', pts: 0, chain: true });
+      }
+    }
+  }
+  if (contact) {
     captures = deletes.length;
     scoreKills = deletes.filter(d => d.type === 'score').length;
+  } else {
+    captures += deletes.length;
   }
+  const fragileKills = deletes.filter(d => d.type === 'fragile').length +
+    cells.filter(c => c.status === 'capture' && s.board[c.k].type === 'fragile').length;
+  const chained = deletes.filter(d => d.chain).length;
 
   // Build-up mode: charge stolen from enemy Score cells / kept from your own overwritten ones.
   let stolen = 0, kept = 0;
@@ -278,7 +345,7 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
 
   if (!cells.length && !reason) reason = 'That blueprint is empty';
   if (!touches && !reason) reason = contact ? 'Must touch one of your cells' : 'Must touch or overlap one of your cells';
-  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept };
+  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept, fragileKills, chained };
 }
 
 /* ---------- blueprint edits ---------- */
@@ -367,7 +434,8 @@ export function applyMove(s, move) {
     }
     n.banked[p] += ev.stolen + ev.kept;   // Build-up: the charge moves to whoever broke the cell
     n.lastMove = { player: p, kind: 'place', bp: m.bp, cells: ev.cells.map(c => c.k), deleted: ev.deletes.map(d => d.k) };
-    const info = { captures: ev.captures, scoreKills: ev.scoreKills, stolen: ev.stolen, kept: ev.kept };
+    const info = { captures: ev.captures, scoreKills: ev.scoreKills, stolen: ev.stolen, kept: ev.kept,
+      fragileKills: ev.fragileKills, chained: ev.chained };
     endOfMove(n, p, info);
     return { ok: true, state: n, info };
   }

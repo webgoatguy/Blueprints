@@ -70,9 +70,9 @@ so your friend and the server always play by the same rules.
 
 | Option | Choices | Default |
 |---|---|---|
-| Mode | **Classic**, **Contact**, **Build-up** or **Build-up II** (see below) | Classic |
+| Mode | **Classic**, **Contact**, **Build-up**, **Build-up II** or **Fragile** (see below) | Classic |
 | Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
+| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value; not used in Fragile) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
 
 **Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
 Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
@@ -98,6 +98,15 @@ new cells are deleted).
 - There are no starting Walls. Each side's three blueprints start on the board in a vertical
   column, blueprint 1 on top, each one 2 NE + 2 NW from the one below. Red's column is 12 cells east.
 - The starting Score cells hold 1 point each (2 after Blue's first move).
+
+**Fragile mode:** Build-up II's start and Contact placement, but every Score cell is replaced by a
+**Fragile** cell, so blueprint 2 is a Wall surrounded by 6 Fragile cells and the starting board matches.
+- When a Fragile cell is destroyed, every Fragile cell of the same colour connected to it is destroyed
+  too: a chain reaction that takes the whole blob. It never spreads into the other colour and stops
+  at any non-Fragile cell.
+- Score = the size of your largest connected blob of Fragile cells, right now. There's no charging
+  and no kill bonus.
+- While you aim a placement, the status bar shows how both players' scores would change.
 
 Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in
 `public/rules.js`). The Build-up II layout is `FORMATION` in the same file.

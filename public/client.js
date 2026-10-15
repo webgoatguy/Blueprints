@@ -11,16 +11,22 @@ const { DIRS, PLAYERS, TYPES, key, unkey } = R;
 /* ---------- constants ---------- */
 const SQRT3 = Math.sqrt(3);
 const NAME = { blue: 'Blue', red: 'Red' };
-const TYPE_NAME = { score: 'Score', attack: 'Attack', wall: 'Wall' };
+const TYPE_NAME = { score: 'Score', fragile: 'Fragile', attack: 'Attack', wall: 'Wall' };
 const TYPE_DESC = {
-  score: 'worth 1 point while on the board',
+  score: 'worth points (how depends on the mode)',
+  fragile: 'Fragile mode only: destroying one destroys its whole connected same-colour blob; your score is your largest blob',
   attack: 'plain cell with no special ability',
-  wall: 'cannot be overwritten by the opponent (each side starts with one)'
+  wall: 'cannot be overwritten or deleted by the opponent'
 };
 const COL = {
-  blue: { main: '#3b82f6', score: '#3b82f6', attack: '#2056d6', wall: '#172f6e' },
-  red:  { main: '#ef4444', score: '#ef4444', attack: '#c42020', wall: '#6a1616' },
+  blue: { main: '#3b82f6', score: '#3b82f6', fragile: '#7fb2ff', attack: '#2056d6', wall: '#172f6e' },
+  red:  { main: '#ef4444', score: '#ef4444', fragile: '#ff8f8f', attack: '#c42020', wall: '#6a1616' },
 };
+// Cell types shown in the legend for a given game
+const typesFor = st => R.scoringOf(st) === 'blob' ? ['wall', 'fragile', 'attack'] : ['wall', 'score', 'attack'];
+// Fragile icon: a crack (unit coordinates, scaled per cell)
+const CRACK = [[-0.10, -0.85], [0.14, -0.33], [-0.2, 0.05], [0.16, 0.43], [-0.04, 0.86]];
+const CRACK_BRANCHES = [[[0.14, -0.33], [0.5, -0.18]], [[-0.2, 0.05], [-0.52, 0.2]]];
 const GRID = '#3c3c3c', BOARD_BG = '#2a2a2a';
 const GOOD = '#34d399', BAD = '#fb7185', AMBER = '#fbbf24';
 const MIN_SIZE = 10, MAX_SIZE = 80;
@@ -70,6 +76,17 @@ function drawIcon(ctx, cx, cy, s, type) {
       const y = y0 + row * rh, off = row % 2 ? -w / 4 : 0;
       for (let bx = x0 + off; bx < x0 + w; bx += w / 2) ctx.fillRect(bx + g / 2, y + g / 2, w / 2 - g, rh - g);
     }
+    ctx.restore();
+  } else if (type === 'fragile') {
+    const k = s * 0.62;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.lineWidth = Math.max(1.2, s * 0.11);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    CRACK.forEach(([x, y], i) => i ? ctx.lineTo(cx + x * k, cy + y * k) : ctx.moveTo(cx + x * k, cy + y * k));
+    for (const [[x1, y1], [x2, y2]] of CRACK_BRANCHES) { ctx.moveTo(cx + x1 * k, cy + y1 * k); ctx.lineTo(cx + x2 * k, cy + y2 * k); }
+    ctx.stroke();
     ctx.restore();
   }
   // attack cells are intentionally drawn blank (no icon)
@@ -125,6 +142,11 @@ function svgIcon(t) {
   } else if (t === 'wall') {
     const Rr = [[-0.95,-0.66,0.9],[0.05,-0.66,0.9],[-0.95,-0.2,0.42],[-0.45,-0.2,0.9],[0.53,-0.2,0.42],[-0.95,0.26,0.9],[0.05,0.26,0.9]];
     inner = Rr.map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="0.38" rx="0.05" fill="currentColor"/>`).join('');
+  } else if (t === 'fragile') {
+    const pts = CRACK.map(([x, y]) => `${x},${y}`).join(' ');
+    const br = CRACK_BRANCHES.map(([[x1, y1], [x2, y2]]) => `M${x1},${y1}L${x2},${y2}`).join('');
+    inner = `<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="0.2" stroke-linejoin="round" stroke-linecap="round"/>` +
+      `<path d="${br}" stroke="currentColor" stroke-width="0.2" stroke-linecap="round"/>`;
   } else {
     const pts = HC.map((c, i) => (c * 0.86).toFixed(3) + ',' + (HS[i] * 0.86).toFixed(3)).join(' ');
     inner = `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="0.2"/>`;
@@ -233,8 +255,17 @@ function buildPanels() {
       ro.observe(ref.canvas);
     }
   }
-  $('legend').innerHTML = TYPES.map(t => `<span>${svgIcon(t)}${TYPE_NAME[t]}</span>`).join('');
   $('rulesLegend').innerHTML = TYPES.map(t => `<li><span class="icon">${svgIcon(t)}</span> <b>${TYPE_NAME[t]}</b> — ${TYPE_DESC[t]}</li>`).join('');
+}
+
+// Board legend: only the cell types used by the current game's mode.
+let legendKey = '';
+function renderLegend() {
+  const types = typesFor(G);
+  const k = types.join();
+  if (k === legendKey) return;
+  legendKey = k;
+  $('legend').innerHTML = types.map(t => `<span>${svgIcon(t)}${TYPE_NAME[t]}</span>`).join('');
 }
 
 /* ---------- rendering ---------- */
@@ -244,7 +275,7 @@ function requestRender() {
   rafPending = true;
   requestAnimationFrame(() => { rafPending = false; renderBoard(); renderStatus(); });
 }
-function renderAll() { renderHeader(); renderPanels(); requestRender(); }
+function renderAll() { renderHeader(); renderLegend(); renderPanels(); requestRender(); }
 
 function renderHeader() {
   const order = R.settingsOf(G).turnOrder;
@@ -300,7 +331,14 @@ function renderPanels() {
     P.total.textContent = sc[p].total;
     const s = sc[p];
     const killTxt = `${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
-    if (s.scoring === 'buildup') {
+    if (s.scoring === 'blob') {
+      const n = s.blobs.length;
+      P.sub.textContent = `${s.fragile} fragile · ${n} blob${n === 1 ? '' : 's'}`;
+      P.sub.title = `Score = your largest connected blob of Fragile cells (${s.largest}).\n` +
+        `You have ${s.fragile} Fragile cell${s.fragile === 1 ? '' : 's'} in ${n} blob${n === 1 ? '' : 's'}` +
+        (n ? `: ${s.blobs.join(', ')}.` : '.');
+      P.inc.hidden = true;
+    } else if (s.scoring === 'buildup') {
       P.sub.textContent = `${s.charge} charging + ${s.banked} stolen` + (s.killPoints ? ` + ${s.killScore} kill` : '');
       P.sub.title = `${s.charge} points stored in ${s.onBoard} Score cell${s.onBoard === 1 ? '' : 's'} on the board (lost to the opponent if they delete them)` +
         ` + ${s.banked} stolen from deleted enemy Score cells (kept permanently)` +
@@ -331,7 +369,7 @@ function renderPanels() {
     for (let b = 0; b < 3; b++) {
       const ref = BP[p][b], cells = G.blueprints[p][b];
       ref.card.classList.toggle('sel', canAct(p) && !!UI.selected && UI.selected.bp === b);
-      const cnt = { score: 0, attack: 0, wall: 0 };
+      const cnt = { score: 0, fragile: 0, attack: 0, wall: 0 };
       for (const k in cells) cnt[cells[k]]++;
       const html = TYPES.filter(t => cnt[t])
         .map(t => `<span title="${TYPE_NAME[t]}">${svgIcon(t)}${cnt[t]}</span>`).join('') || '<span>empty</span>';
@@ -592,6 +630,7 @@ function hexAtClient(cx, cy) {
 /* ---------- describing captures (preview + toasts) ---------- */
 function captureDetails(x, past) {
   const kp = R.settingsOf(G).killPoints, det = [];
+  if (x.fragileKills) det.push(`${x.fragileKills} fragile` + (x.chained ? `, ${x.chained} by chain reaction` : ''));
   if (x.scoreKills) det.push(`${x.scoreKills} score`);
   if (x.stolen) det.push(`${past ? 'stole' : 'steals'} ${x.stolen} pts`);
   if (x.scoreKills && kp) det.push(`+${x.scoreKills * kp} pts`);
@@ -604,7 +643,19 @@ function gainText(ev) {
     t += ` · ${R.placementOf(G) === 'contact' ? 'deletes' : 'captures'} ${ev.captures}${det.length ? ` (${det.join(', ')})` : ''}`;
   }
   if (ev.kept) t += ` · keeps ${ev.kept} pts`;
+  if (R.scoringOf(G) === 'blob') t += blobPreview(ev);
   return t;
+}
+// Fragile mode: how both players' scores (largest blobs) would change if this placement is made.
+function blobPreview(ev) {
+  const p = cur(), o = R.other(p);
+  const board = { ...G.board };
+  for (const c of ev.cells) board[c.k] = { owner: p, type: c.type };
+  for (const d of ev.deletes) delete board[d.k];
+  const now = R.getScores(G);
+  const who = x => (isOnline() && Net.seat === x ? 'you' : seatName(x));
+  const me = R.fragileBlobs(board, p)[0] || 0, them = R.fragileBlobs(board, o)[0] || 0;
+  return ` · ${who(p)} ${now[p].total}→${me}, ${who(o)} ${now[o].total}→${them}`;
 }
 
 /* ---------- making moves ---------- */
@@ -948,11 +999,12 @@ const MODE_HINT = {
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
   buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
+  fragile: 'Fragile: Build-up II start and Contact placement, with Fragile cells instead of Score cells. Destroying a Fragile cell destroys its whole connected same-colour blob. Your score is your largest blob.',
 };
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {
-  return `${MODE_LABEL[st.mode] || 'Classic'} mode · turns ${ORDER_LABEL[st.turnOrder]} · ` +
-    `${st.killPoints} point${st.killPoints === 1 ? '' : 's'} per enemy Score cell destroyed`;
+  return `${MODE_LABEL[st.mode] || 'Classic'} mode · turns ${ORDER_LABEL[st.turnOrder]}` +
+    (R.usesKillPoints(st.mode) ? ` · ${st.killPoints} point${st.killPoints === 1 ? '' : 's'} per enemy Score cell destroyed` : '');
 }
 
 // Lobby choices, remembered per browser. Each mode keeps its own kill-points value
@@ -988,6 +1040,7 @@ function renderOptions() {
   $('kpMinus').disabled = kp <= 0;
   $('kpPlus').disabled = kp >= R.MAX_KILL_POINTS;
   $('modeHint').textContent = MODE_HINT[lobbyOpts.mode] || '';
+  $('kpField').hidden = !R.usesKillPoints(lobbyOpts.mode);   // Fragile scores by blob size only
 }
 function fillRulesDialog() {
   const st = App.mode ? R.settingsOf(G) : chosenSettings();
