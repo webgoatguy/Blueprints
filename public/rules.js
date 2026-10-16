@@ -27,12 +27,12 @@ export const other = p => (p === 'blue' ? 'red' : 'blue');
 const DIR_NAMES = ['E', 'NE', 'NW', 'W', 'SW', 'SE'];
 const AXES = { EW: ['E', 'W'], NWSE: ['NW', 'SE'], NESW: ['NE', 'SW'] };
 
-// Starting blueprint: 7-cell flower. Centre = wall, the two cells on `axis` = score, other four = attack.
-// Default axis 'EW' (left & right) is the original blueprint.
-export function startBlueprint(axis = 'EW') {
+// Starting blueprint: 7-cell flower. Centre = wall, the two cells on `axis` = `core` (Score, or
+// Fragile in Fragile mode), other four = attack. Default axis 'EW' (left & right) is the original blueprint.
+export function startBlueprint(axis = 'EW', core = 'score') {
   const scoreDirs = AXES[axis];
   const o = { [key(0, 0)]: 'wall' };
-  DIRS.forEach(([dq, dr], i) => { o[key(dq, dr)] = scoreDirs.includes(DIR_NAMES[i]) ? 'score' : 'attack'; });
+  DIRS.forEach(([dq, dr], i) => { o[key(dq, dr)] = scoreDirs.includes(DIR_NAMES[i]) ? core : 'attack'; });
   return o;
 }
 
@@ -46,8 +46,16 @@ export function ringBlueprint(type) {
 // Build-up II start: each side's three blueprints are already on the board in a vertical column,
 // bp1 on top. Each one is 2 NE + 2 NW from the one below it. Red's column is 12 cells east.
 // Blueprint 2 = wall + 6 Score cells; blueprints 1 and 3 = wall + 6 plain (attack) cells.
-// In Fragile mode the Score ring becomes a Fragile ring.
-const FORMATION_BLUEPRINTS = (core = 'score') => [ringBlueprint('attack'), ringBlueprint(core), ringBlueprint('attack')];
+// Starting blueprints for formation starts, bp1..bp3 (bp1 goes on top):
+//   'rings'   (Build-up II): wall + 6 plain, wall + 6 `core`, wall + 6 plain - same for both players.
+//   'rotated' (Fragile):     three flowers with 2 `core` cells each, 120° rotations of each other.
+//                            Blue: NW-SE, E-W, NE-SW.  Red (mirror image): NE-SW, E-W, NW-SE.
+const ROTATED_AXES = { blue: ['NWSE', 'EW', 'NESW'], red: ['NESW', 'EW', 'NWSE'] };
+function formationBlueprints(rules, p) {
+  const core = rules.core || 'score';
+  if (rules.blueprints === 'rotated') return ROTATED_AXES[p].map(a => startBlueprint(a, core));
+  return [ringBlueprint('attack'), ringBlueprint(core), ringBlueprint('attack')];
+}
 const FORMATION = {
   blue: { middle: [-6, 0] },
   red: { middle: [6, 0] },
@@ -70,8 +78,8 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //            'buildup2' -> Build-up rules, but blueprint 2 is a wall ringed by 6 Score cells and
 //                         blueprints 1 and 3 are a wall ringed by 6 plain cells; all three start
 //                         already placed on the board (see FORMATION). Starting Score cells hold 1 point.
-//            'fragile'  -> Build-up II's start and Contact placement, but Score cells are replaced
-//                         by Fragile cells. Destroying a Fragile cell destroys that player's whole
+//            'fragile'  -> Formation start with rotated blueprints (2 Fragile cells each, see
+//                         ROTATED_AXES) and Contact placement; there are no Score cells. Destroying a Fragile cell destroys that player's whole
 //                         connected blob of Fragile cells (chain reaction, same colour only).
 //                         Score = size of your largest Fragile blob right now.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
@@ -84,8 +92,8 @@ const MODE_RULES = {
   classic: { placement: 'overwrite', scoring: 'count', start: 'walls' },
   contact: { placement: 'contact', scoring: 'bank', start: 'walls' },
   buildup: { placement: 'contact', scoring: 'buildup', start: 'walls' },
-  buildup2: { placement: 'contact', scoring: 'buildup', start: 'formation' },
-  fragile: { placement: 'contact', scoring: 'blob', start: 'formation', core: 'fragile' },
+  buildup2: { placement: 'contact', scoring: 'buildup', start: 'formation', blueprints: 'rings' },
+  fragile: { placement: 'contact', scoring: 'blob', start: 'formation', blueprints: 'rotated', core: 'fragile' },
 };
 export const placementOf = s => MODE_RULES[modeOf(s)].placement;
 export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
@@ -124,7 +132,7 @@ export function newState(settings) {
   if (MODE_RULES[st.mode].start === 'formation') {
     for (const p of PLAYERS) {
       const f = FORMATION[p];
-      s.blueprints[p] = FORMATION_BLUEPRINTS(MODE_RULES[st.mode].core);
+      s.blueprints[p] = formationBlueprints(MODE_RULES[st.mode], p);
       s.blueprints[p].forEach((bp, i) => {
         const lift = 1 - i;   // bp1 one step up, bp2 in the middle, bp3 one step down
         const cq = f.middle[0] + lift * STACK_STEP[0], cr = f.middle[1] + lift * STACK_STEP[1];

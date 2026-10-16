@@ -99,8 +99,11 @@ new cells are deleted).
   column, blueprint 1 on top, each one 2 NE + 2 NW from the one below. Red's column is 12 cells east.
 - The starting Score cells hold 1 point each (2 after Blue's first move).
 
-**Fragile mode:** Build-up II's start and Contact placement, but every Score cell is replaced by a
-**Fragile** cell, so blueprint 2 is a Wall surrounded by 6 Fragile cells and the starting board matches.
+**Fragile mode:** Contact placement, and **Fragile** cells instead of Score cells.
+- Each starting blueprint is a Wall with 2 Fragile cells on opposite sides and 4 plain cells, and the three are
+  120° rotations of each other. Blue's Fragile cells are on NW–SE, E–W and NE–SW; Red is the mirror image
+  (NE–SW, E–W, NW–SE). They start on the board in the same column formation as Build-up II, with
+  Red 12 cells east. Every starting Fragile cell is its own blob, so both players start with a score of 1.
 - When a Fragile cell is destroyed, every Fragile cell of the same colour connected to it is destroyed
   too: a chain reaction that takes the whole blob. It never spreads into the other colour and stops
   at any non-Fragile cell.

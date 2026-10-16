@@ -448,9 +448,10 @@
   </ul>
 
   <h3>Fragile mode</h3>
-  <p>Build-up II's start and Contact placement (no overlapping; your new cells delete touching enemy cells except Walls), but there are no Score cells:</p>
+  <p>Contact placement (no overlapping; your new cells delete touching enemy cells except Walls), and there are no Score cells:</p>
   <ul>
-    <li><b>Fragile cells</b> replace Score cells everywhere: blueprint 2 is a Wall surrounded by 6 Fragile cells, and the starting board matches.</li>
+    <li><b>Starting blueprints.</b> Each is a Wall with 2 Fragile cells on opposite sides and 4 plain cells, and the three are 120° rotations of each other. Blue: blueprint 1 has its Fragile cells on the NW–SE axis, blueprint 2 on E–W, blueprint 3 on NE–SW. Red is the mirror image: NE–SW, E–W, NW–SE.</li>
+    <li><b>Formation start.</b> No starting Walls: each side's three blueprints are already on the board in a vertical column (blueprint 1 on top), each 2 NE + 2 NW from the one below. Red's column is 12 cells east. Every starting Fragile cell is its own blob, so both players start with a score of 1.</li>
     <li><b>Chain reaction.</b> When a Fragile cell is destroyed, every Fragile cell of the same colour connected to it is destroyed too, so the whole blob goes at once. The chain never spreads into the other colour and stops at any non-Fragile cell.</li>
     <li><b>Score</b> = the size of your largest connected blob of Fragile cells, right now. Merging blobs grows it; losing a blob shrinks it.</li>
     <li>While you aim a placement, the bar at the bottom shows how both scores would change.</li>
