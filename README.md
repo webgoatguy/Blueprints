@@ -107,8 +107,9 @@ new cells are deleted).
 - When a Fragile cell is destroyed, every Fragile cell of the same colour connected to it is destroyed
   too: a chain reaction that takes the whole blob. It never spreads into the other colour and stops
   at any non-Fragile cell.
-- Score = the size of your largest connected blob of Fragile cells, right now. There's no charging
-  and no kill bonus.
+- Each Fragile cell on the board shows the size of the blob it belongs to.
+- A blob of n Fragile cells is worth n² points. Your score is the total over all your blobs, right now.
+  There's no charging and no kill bonus.
 - While you aim a placement, the status bar shows how both players' scores would change.
 
 Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in

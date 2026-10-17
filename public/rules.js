@@ -81,7 +81,8 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //            'fragile'  -> Formation start with rotated blueprints (2 Fragile cells each, see
 //                         ROTATED_AXES) and Contact placement; there are no Score cells. Destroying a Fragile cell destroys that player's whole
 //                         connected blob of Fragile cells (chain reaction, same colour only).
-//                         Score = size of your largest Fragile blob right now.
+//                         Each Fragile cell shows its blob's size n; a blob is worth n^2 points.
+//                         Score = sum of n^2 over your Fragile blobs right now.
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
@@ -224,10 +225,31 @@ export function fragileBlobs(board, p, gone) {
   return sizes.sort((a, b) => b - a);
 }
 
+// Fragile mode: size of the blob each Fragile cell belongs to, for every Fragile cell on the board.
+export function fragileBlobSizeMap(board) {
+  const out = {};
+  for (const k in board) {
+    const c = board[k];
+    if (c.type !== 'fragile' || k in out) continue;
+    const members = [k], stack = [k], seen = new Set([k]);
+    while (stack.length) {
+      const [q, r] = unkey(stack.pop());
+      for (const [dq, dr] of DIRS) {
+        const nk = key(q + dq, r + dr), nc = board[nk];
+        if (nc && nc.type === 'fragile' && nc.owner === c.owner && !seen.has(nk)) { seen.add(nk); stack.push(nk); members.push(nk); }
+      }
+    }
+    for (const m of members) out[m] = members.length;
+  }
+  return out;
+}
+// Fragile mode: a blob of n cells is worth n squared; a player's score is the sum over their blobs.
+export const blobPoints = sizes => sizes.reduce((a, n) => a + n * n, 0);
+
 // Classic:  Score = your Score cells on the board + killPoints x enemy Score cells destroyed.
 // Contact:  Score = points banked at the end of your turns + kills x killPoints.
 // Build-up: Score = charge in your Score cells + banked (stolen/kept) charge + kills x killPoints.
-// Fragile:  Score = size of your largest Fragile blob.
+// Fragile:  Score = sum of n^2 over your Fragile blobs (n = cells in the blob).
 export function getScores(s) {
   const { killPoints: kp, mode } = settingsOf(s);
   const scoring = scoringOf(s);
@@ -239,7 +261,7 @@ export function getScores(s) {
     if (scoring === 'blob') {
       const blobs = fragileBlobs(s.board, p);
       const fragile = blobs.reduce((a, b) => a + b, 0);
-      out[p] = { mode, scoring, blobs, fragile, largest: blobs[0] || 0, total: blobs[0] || 0 };
+      out[p] = { mode, scoring, blobs, fragile, largest: blobs[0] || 0, total: blobPoints(blobs) };
       continue;
     }
     const charge = scoring === 'buildup' ? chargeOf(s, p) : 0;

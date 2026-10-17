@@ -14,7 +14,7 @@ const NAME = { blue: 'Blue', red: 'Red' };
 const TYPE_NAME = { score: 'Score', fragile: 'Fragile', attack: 'Attack', wall: 'Wall' };
 const TYPE_DESC = {
   score: 'worth points (how depends on the mode)',
-  fragile: 'Fragile mode only: destroying one destroys its whole connected same-colour blob; your score is your largest blob',
+  fragile: 'Fragile mode only: destroying one destroys its whole connected same-colour blob; a blob of n cells is worth n² points',
   attack: 'plain cell with no special ability',
   wall: 'cannot be overwritten or deleted by the opponent'
 };
@@ -96,7 +96,8 @@ function drawCell(ctx, cx, cy, s, owner, type, alpha, label) {
   const a = alpha == null ? 1 : alpha;
   if (a !== 1) { ctx.save(); ctx.globalAlpha = a; }
   if (label != null && s >= 9) {
-    // Build-up mode: Score cell showing its stored charge as a number (no star, for readability)
+    // Build-up: Score cell showing its stored charge. Fragile: Fragile cell showing its blob's size.
+    // The number replaces the icon, for readability.
     hexPath(ctx, cx, cy, s);
     ctx.fillStyle = COL[owner][type];
     ctx.fill();
@@ -334,7 +335,8 @@ function renderPanels() {
     if (s.scoring === 'blob') {
       const n = s.blobs.length;
       P.sub.textContent = `${s.fragile} fragile · ${n} blob${n === 1 ? '' : 's'}`;
-      P.sub.title = `Score = your largest connected blob of Fragile cells (${s.largest}).\n` +
+      P.sub.title = `Score = the sum of n² over your Fragile blobs (n = cells in the blob)` +
+        (n ? `: ${s.blobs.map(b => b + '²').join(' + ')} = ${s.total}.\n` : ': 0.\n') +
         `You have ${s.fragile} Fragile cell${s.fragile === 1 ? '' : 's'} in ${n} blob${n === 1 ? '' : 's'}` +
         (n ? `: ${s.blobs.join(', ')}.` : '.');
       P.inc.hidden = true;
@@ -490,11 +492,14 @@ function renderBoard() {
   // cells
   const vis = (x, y) => x > -2 * s && x < w + 2 * s && y > -2 * s && y < h + 2 * s;
   const showCharge = R.scoringOf(G) === 'buildup';
+  const blobSize = R.scoringOf(G) === 'blob' ? R.fragileBlobSizeMap(G.board) : null;
   for (const k in G.board) {
     const [q, r] = unkey(k), x = X(q, r), y = Y(r);
     if (!vis(x, y)) continue;
     const c = G.board[k];
-    drawCell(ctx, x, y, s, c.owner, c.type, 1, showCharge && c.type === 'score' ? (c.pts || 0) : null);
+    const label = showCharge && c.type === 'score' ? (c.pts || 0)
+      : blobSize && c.type === 'fragile' ? blobSize[k] : null;
+    drawCell(ctx, x, y, s, c.owner, c.type, 1, label);
   }
 
   // last placement
@@ -646,7 +651,7 @@ function gainText(ev) {
   if (R.scoringOf(G) === 'blob') t += blobPreview(ev);
   return t;
 }
-// Fragile mode: how both players' scores (largest blobs) would change if this placement is made.
+// Fragile mode: how both players' scores (sum of n² over blobs) would change if this placement is made.
 function blobPreview(ev) {
   const p = cur(), o = R.other(p);
   const board = { ...G.board };
@@ -654,7 +659,7 @@ function blobPreview(ev) {
   for (const d of ev.deletes) delete board[d.k];
   const now = R.getScores(G);
   const who = x => (isOnline() && Net.seat === x ? 'you' : seatName(x));
-  const me = R.fragileBlobs(board, p)[0] || 0, them = R.fragileBlobs(board, o)[0] || 0;
+  const me = R.blobPoints(R.fragileBlobs(board, p)), them = R.blobPoints(R.fragileBlobs(board, o));
   return ` · ${who(p)} ${now[p].total}→${me}, ${who(o)} ${now[o].total}→${them}`;
 }
 
@@ -999,7 +1004,7 @@ const MODE_HINT = {
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
   buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
-  fragile: 'Fragile: each side starts with its three blueprints on the board (each a wall with 2 Fragile cells, rotated 120° from each other). Contact placement. Destroying a Fragile cell destroys its whole connected same-colour blob. Your score is your largest blob.',
+  fragile: 'Fragile: each side starts with its three blueprints on the board (each a wall with 2 Fragile cells, rotated 120° from each other). Contact placement. Destroying a Fragile cell destroys its whole connected same-colour blob. A blob of n cells is worth n² points.',
 };
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {
