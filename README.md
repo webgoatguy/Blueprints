@@ -70,9 +70,9 @@ so your friend and the server always play by the same rules.
 
 | Option | Choices | Default |
 |---|---|---|
-| Mode | **Classic**, **Contact**, **Build-up**, **Build-up II**, **Fragile** or **Surround** (see below) | Classic |
+| Mode | **Classic**, **Contact**, **Build-up**, **Build-up II**, **Fragile**, **Surround** or **Bounty** (see below) | Classic |
 | Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value; not used in Fragile or Surround) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
+| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value; not used in Fragile, Surround or Bounty) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
 
 **Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
 Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
@@ -119,6 +119,12 @@ new cells are deleted).
   The loop must be only your cells, and it can be any size with empty space inside.
 - Score = 1 point per enemy cell deleted by surrounding. A cell hit by both contact and surrounding still
   scores; contact alone scores nothing.
+
+**Bounty mode:** Contact placement with Fragile mode's start, but with Score cells: each blueprint is a
+Wall + 2 Score cells + 4 plain cells, rotated 120° from each other, starting on the board in columns.
+- Score cells earn nothing per turn.
+- Each enemy Score cell you destroy pays out the number of Score cells you have on the board after that
+  placement, including ones it just added. 2 kills with 5 Score cells = 10 points.
 
 Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in
 `public/rules.js`). The Build-up II layout is `FORMATION` in the same file.

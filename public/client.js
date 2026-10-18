@@ -337,7 +337,13 @@ function renderPanels() {
     P.total.textContent = sc[p].total;
     const s = sc[p];
     const killTxt = `${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
-    if (s.scoring === 'surround') {
+    if (s.scoring === 'bounty') {
+      P.sub.textContent = `${s.destroyed} kill${s.destroyed === 1 ? '' : 's'} · ${s.onBoard} score cells`;
+      P.sub.title = `${s.fromKills} points from destroying ${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'}.\n` +
+        `Each enemy Score cell you destroy pays out the number of Score cells you have on the board after that placement — currently ${s.onBoard}.`;
+      P.inc.textContent = `+${s.perKill}/kill`;
+      P.inc.hidden = false;
+    } else if (s.scoring === 'surround') {
       P.sub.textContent = `${s.surrounded} surrounded`;
       P.sub.title = `1 point for every enemy cell you've destroyed by surrounding it with a closed loop of your cells (${s.surrounded} so far).\nDestroying by contact alone scores nothing.`;
       P.inc.hidden = true;
@@ -659,6 +665,7 @@ function captureDetails(x, past) {
   if (x.surrounded) det.push(`${x.surrounded} surrounded, +${x.surrounded} pt${x.surrounded === 1 ? '' : 's'}`);
   if (x.fragileKills) det.push(`${x.fragileKills} fragile` + (x.chained ? `, ${x.chained} by chain reaction` : ''));
   if (x.scoreKills) det.push(`${x.scoreKills} score`);
+  if (x.bounty) det.push(`+${x.bounty} pts = ${x.scoreKills} × ${x.perKill} score cells`);
   if (x.stolen) det.push(`${past ? 'stole' : 'steals'} ${x.stolen} pts`);
   if (x.scoreKills && kp) det.push(`+${x.scoreKills * kp} pts`);
   return det;
@@ -1026,6 +1033,7 @@ const MODE_HINT = {
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
   buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
+  bounty: 'Bounty: Contact placement, starting from three rotated blueprints already on the board. No points per turn: each enemy Score cell you destroy pays out the number of Score cells you have on the board.',
   surround: 'Surround: only Walls and normal cells; one starting ring each. Contact placement. Enclose enemy cells inside a closed loop of your cells to delete them (walls too): 1 point each.',
   fragile: 'Fragile: each side starts with its three blueprints on the board (each a wall with 2 Fragile cells, rotated 120° from each other). Contact placement. Destroying a Fragile cell destroys its whole connected same-colour blob. A blob of n cells is worth n² points.',
 };

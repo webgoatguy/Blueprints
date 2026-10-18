@@ -81,6 +81,9 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //            'surround' -> Contact placement; only Wall and normal cells; one starting ring each.
 //                         Enemy cells (walls too) inside a closed loop of your cells are deleted
 //                         after your placement: 1 point each. Score = points from surrounding.
+//            'bounty'   -> Contact placement with Fragile's start (rotated blueprints, Score cells).
+//                         No per-turn income: destroying an enemy Score cell pays out the number of
+//                         Score cells you have on the board after that placement (per cell destroyed).
 //            'fragile'  -> Formation start with rotated blueprints (2 Fragile cells each, see
 //                         ROTATED_AXES) and Contact placement; there are no Score cells. Destroying a Fragile cell destroys that player's whole
 //                         connected blob of Fragile cells (chain reaction, same colour only).
@@ -89,8 +92,8 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
-export const MODES = ['classic', 'contact', 'buildup', 'buildup2', 'fragile', 'surround'];
-export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II', fragile: 'Fragile', surround: 'Surround' };
+export const MODES = ['classic', 'contact', 'buildup', 'buildup2', 'fragile', 'surround', 'bounty'];
+export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II', fragile: 'Fragile', surround: 'Surround', bounty: 'Bounty' };
 // Each mode = a placement rule + a scoring rule + a starting setup (kept separate so they're easy to recombine).
 const MODE_RULES = {
   classic: { placement: 'overwrite', scoring: 'count', start: 'walls' },
@@ -99,13 +102,14 @@ const MODE_RULES = {
   buildup2: { placement: 'contact', scoring: 'buildup', start: 'formation', blueprints: 'rings' },
   fragile: { placement: 'contact', scoring: 'blob', start: 'formation', blueprints: 'rotated', core: 'fragile' },
   surround: { placement: 'contact', scoring: 'surround', start: 'single', surround: true },
+  bounty: { placement: 'contact', scoring: 'bounty', start: 'formation', blueprints: 'rotated', core: 'score' },
 };
 export const placementOf = s => MODE_RULES[modeOf(s)].placement;
 export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
-export const usesKillPoints = mode => !['blob', 'surround'].includes(MODE_RULES[mode].scoring);
+export const usesKillPoints = mode => !['blob', 'surround', 'bounty'].includes(MODE_RULES[mode].scoring);
 export const surroundOf = s => !!MODE_RULES[modeOf(s)].surround;
 export const TURN_ORDERS = ['122', '1111'];
-export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0, fragile: 0, surround: 0 };
+export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0, fragile: 0, surround: 0, bounty: 0 };
 export const DEFAULT_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 2 };
 const LEGACY_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 1 }; // games saved before options existed
 export const MAX_KILL_POINTS = 100;
@@ -144,7 +148,7 @@ export function newState(settings) {
         const cq = f.middle[0] + lift * STACK_STEP[0], cr = f.middle[1] + lift * STACK_STEP[1];
         for (const k in bp) {
           const [q, r] = unkey(k);
-          s.board[key(cq + q, cr + r)] = bp[k] === 'score'
+          s.board[key(cq + q, cr + r)] = bp[k] === 'score' && MODE_RULES[st.mode].scoring === 'buildup'
             ? { owner: p, type: 'score', pts: FORMATION_START_PTS }
             : { owner: p, type: bp[k] };
         }
@@ -274,6 +278,10 @@ export function getScores(s) {
     const banked = (s.banked && s.banked[p]) || 0;
     if (scoring === 'surround') {
       out[p] = { mode, scoring, surrounded: banked, total: banked };
+      continue;
+    }
+    if (scoring === 'bounty') {
+      out[p] = { mode, scoring, onBoard, perKill: onBoard, destroyed: kills, fromKills: banked, total: banked };
       continue;
     }
     if (scoring === 'blob') {
@@ -449,7 +457,14 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
     }
     captures = deletes.length;
   }
-  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept, fragileKills, chained, surrounded, enclosed };
+  // Bounty mode: each enemy Score cell destroyed pays out the number of Score cells the player has
+  // on the board after this placement (including the ones it adds).
+  let bounty = 0, perKill = 0;
+  if (scoringOf(s) === 'bounty' && scoreKills) {
+    perKill = scoreCellsOf(s, player) + cells.filter(c => c.type === 'score' && c.status !== 'blocked').length;
+    bounty = scoreKills * perKill;
+  }
+  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept, fragileKills, chained, surrounded, enclosed, bounty, perKill };
 }
 
 /* ---------- blueprint edits ---------- */
@@ -538,9 +553,10 @@ export function applyMove(s, move) {
     }
     n.banked[p] += ev.stolen + ev.kept;   // Build-up: the charge moves to whoever broke the cell
     n.banked[p] += ev.surrounded;          // Surround: 1 point per surrounded enemy cell
+    n.banked[p] += ev.bounty;              // Bounty: kills x your Score cells
     n.lastMove = { player: p, kind: 'place', bp: m.bp, cells: ev.cells.map(c => c.k), deleted: ev.deletes.map(d => d.k) };
     const info = { captures: ev.captures, scoreKills: ev.scoreKills, stolen: ev.stolen, kept: ev.kept,
-      fragileKills: ev.fragileKills, chained: ev.chained, surrounded: ev.surrounded };
+      fragileKills: ev.fragileKills, chained: ev.chained, surrounded: ev.surrounded, bounty: ev.bounty, perKill: ev.perKill };
     endOfMove(n, p, info);
     return { ok: true, state: n, info };
   }
