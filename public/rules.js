@@ -78,6 +78,9 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //            'buildup2' -> Build-up rules, but blueprint 2 is a wall ringed by 6 Score cells and
 //                         blueprints 1 and 3 are a wall ringed by 6 plain cells; all three start
 //                         already placed on the board (see FORMATION). Starting Score cells hold 1 point.
+//            'surround' -> Contact placement; only Wall and normal cells; one starting ring each.
+//                         Enemy cells (walls too) inside a closed loop of your cells are deleted
+//                         after your placement: 1 point each. Score = points from surrounding.
 //            'fragile'  -> Formation start with rotated blueprints (2 Fragile cells each, see
 //                         ROTATED_AXES) and Contact placement; there are no Score cells. Destroying a Fragile cell destroys that player's whole
 //                         connected blob of Fragile cells (chain reaction, same colour only).
@@ -86,8 +89,8 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 // turnOrder: '122'  -> Blue 1, then Red 2, Blue 2, Red 2, ...
 //            '1111' -> players simply alternate single moves
 // killPoints: points earned for each enemy Score cell you destroy
-export const MODES = ['classic', 'contact', 'buildup', 'buildup2', 'fragile'];
-export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II', fragile: 'Fragile' };
+export const MODES = ['classic', 'contact', 'buildup', 'buildup2', 'fragile', 'surround'];
+export const MODE_NAMES = { classic: 'Classic', contact: 'Contact', buildup: 'Build-up', buildup2: 'Build-up II', fragile: 'Fragile', surround: 'Surround' };
 // Each mode = a placement rule + a scoring rule + a starting setup (kept separate so they're easy to recombine).
 const MODE_RULES = {
   classic: { placement: 'overwrite', scoring: 'count', start: 'walls' },
@@ -95,12 +98,14 @@ const MODE_RULES = {
   buildup: { placement: 'contact', scoring: 'buildup', start: 'walls' },
   buildup2: { placement: 'contact', scoring: 'buildup', start: 'formation', blueprints: 'rings' },
   fragile: { placement: 'contact', scoring: 'blob', start: 'formation', blueprints: 'rotated', core: 'fragile' },
+  surround: { placement: 'contact', scoring: 'surround', start: 'single', surround: true },
 };
 export const placementOf = s => MODE_RULES[modeOf(s)].placement;
 export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
-export const usesKillPoints = mode => MODE_RULES[mode].scoring !== 'blob';
+export const usesKillPoints = mode => !['blob', 'surround'].includes(MODE_RULES[mode].scoring);
+export const surroundOf = s => !!MODE_RULES[modeOf(s)].surround;
 export const TURN_ORDERS = ['122', '1111'];
-export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0, fragile: 0 };
+export const DEFAULT_KILL_POINTS = { classic: 2, contact: 20, buildup: 0, buildup2: 0, fragile: 0, surround: 0 };
 export const DEFAULT_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 2 };
 const LEGACY_SETTINGS = { mode: 'classic', turnOrder: '122', killPoints: 1 }; // games saved before options existed
 export const MAX_KILL_POINTS = 100;
@@ -144,6 +149,15 @@ export function newState(settings) {
             : { owner: p, type: bp[k] };
         }
       });
+    }
+  } else if (MODE_RULES[st.mode].start === 'single') {
+    // Surround: three plain rings (wall + 6 normal cells); one copy of it on the board per player,
+    // Blue centred at (-3,0) and Red 6 cells to the right at (3,0).
+    for (const p of PLAYERS) {
+      s.blueprints[p] = [ringBlueprint('attack'), ringBlueprint('attack'), ringBlueprint('attack')];
+      const cq = p === 'blue' ? -3 : 3;
+      const bp = s.blueprints[p][0];
+      for (const k in bp) { const [q, r] = unkey(k); s.board[key(cq + q, r)] = { owner: p, type: bp[k] }; }
     }
   } else {
     s.board[key(-3, 0)] = { owner: 'blue', type: 'wall' };
@@ -258,6 +272,10 @@ export function getScores(s) {
     const onBoard = scoreCellsOf(s, p);
     const kills = s.destroyed[p];
     const banked = (s.banked && s.banked[p]) || 0;
+    if (scoring === 'surround') {
+      out[p] = { mode, scoring, surrounded: banked, total: banked };
+      continue;
+    }
     if (scoring === 'blob') {
       const blobs = fragileBlobs(s.board, p);
       const fragile = blobs.reduce((a, b) => a + b, 0);
@@ -268,6 +286,43 @@ export function getScores(s) {
     const base = scoring === 'bank' ? banked : scoring === 'buildup' ? charge + banked : onBoard;
     out[p] = { mode, scoring, onBoard, banked, charge, perTurn: onBoard, perMove: onBoard,
       destroyed: kills, killPoints: kp, killScore: kills * kp, total: base + kills * kp };
+  }
+  return out;
+}
+
+/* ---------- Surround mode: enclosed areas ---------- */
+// Hexes (empty or holding enemy cells) that `p`'s cells completely enclose, i.e. that can't reach
+// infinity without crossing one of p's cells. The board is infinite, so any enclosed hex lies inside
+// p's bounding box; flood-fill "outside" from a one-hex margin around that box and return the rest.
+export function enclosedHexes(board, p) {
+  let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity, mine = 0;
+  for (const k in board) {
+    if (board[k].owner !== p) continue;
+    const [q, r] = unkey(k);
+    mine++;
+    if (q < minQ) minQ = q; if (q > maxQ) maxQ = q; if (r < minR) minR = r; if (r > maxR) maxR = r;
+  }
+  if (mine < 6) return [];                         // a loop needs at least 6 cells
+  const Q0 = minQ - 1, Q1 = maxQ + 1, R0 = minR - 1, R1 = maxR + 1;
+  const isMine = (q, r) => { const c = board[key(q, r)]; return !!c && c.owner === p; };
+  const outside = new Set(), stack = [];
+  for (let q = Q0; q <= Q1; q++) for (const r of [R0, R1]) { const k = key(q, r); if (!outside.has(k)) { outside.add(k); stack.push([q, r]); } }
+  for (let r = R0; r <= R1; r++) for (const q of [Q0, Q1]) { const k = key(q, r); if (!outside.has(k)) { outside.add(k); stack.push([q, r]); } }
+  while (stack.length) {
+    const [q, r] = stack.pop();
+    for (const [dq, dr] of DIRS) {
+      const nq = q + dq, nr = r + dr;
+      if (nq < Q0 || nq > Q1 || nr < R0 || nr > R1) continue;
+      const nk = key(nq, nr);
+      if (outside.has(nk) || isMine(nq, nr)) continue;
+      outside.add(nk);
+      stack.push([nq, nr]);
+    }
+  }
+  const out = [];
+  for (let q = minQ; q <= maxQ; q++) for (let r = minR; r <= maxR; r++) {
+    const k = key(q, r);
+    if (!outside.has(k) && !isMine(q, r)) out.push(k);
   }
   return out;
 }
@@ -375,7 +430,26 @@ export function evalPlacement(s, player, bpIdx, handleKey, hq, hr) {
 
   if (!cells.length && !reason) reason = 'That blueprint is empty';
   if (!touches && !reason) reason = contact ? 'Must touch one of your cells' : 'Must touch or overlap one of your cells';
-  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept, fragileKills, chained };
+
+  // Surround mode: after the placement, every enemy cell (walls included) inside a closed loop of
+  // the player's cells is deleted and worth 1 point - even if it's also being deleted by contact.
+  let surrounded = 0, enclosed = [];
+  if (!reason && surroundOf(s)) {
+    const after = { ...s.board };
+    for (const c of cells) after[c.k] = { owner: player, type: c.type };
+    enclosed = enclosedHexes(after, player);
+    const byKey = new Map(deletes.map(d => [d.k, d]));
+    for (const k of enclosed) {
+      const c = s.board[k];
+      if (!c || c.owner === player) continue;
+      surrounded++;
+      const d = byKey.get(k);
+      if (d) d.surround = true;
+      else { const [q, r] = unkey(k); deletes.push({ k, q, r, type: c.type, pts: c.pts || 0, surround: true }); }
+    }
+    captures = deletes.length;
+  }
+  return { cells, deletes, ok: !reason, reason, captures, scoreKills, stolen, kept, fragileKills, chained, surrounded, enclosed };
 }
 
 /* ---------- blueprint edits ---------- */
@@ -463,9 +537,10 @@ export function applyMove(s, move) {
       delete n.board[d.k];
     }
     n.banked[p] += ev.stolen + ev.kept;   // Build-up: the charge moves to whoever broke the cell
+    n.banked[p] += ev.surrounded;          // Surround: 1 point per surrounded enemy cell
     n.lastMove = { player: p, kind: 'place', bp: m.bp, cells: ev.cells.map(c => c.k), deleted: ev.deletes.map(d => d.k) };
     const info = { captures: ev.captures, scoreKills: ev.scoreKills, stolen: ev.stolen, kept: ev.kept,
-      fragileKills: ev.fragileKills, chained: ev.chained };
+      fragileKills: ev.fragileKills, chained: ev.chained, surrounded: ev.surrounded };
     endOfMove(n, p, info);
     return { ok: true, state: n, info };
   }

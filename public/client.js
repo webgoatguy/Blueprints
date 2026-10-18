@@ -23,7 +23,12 @@ const COL = {
   red:  { main: '#ef4444', score: '#ef4444', fragile: '#ff8f8f', attack: '#c42020', wall: '#6a1616' },
 };
 // Cell types shown in the legend for a given game
-const typesFor = st => R.scoringOf(st) === 'blob' ? ['wall', 'fragile', 'attack'] : ['wall', 'score', 'attack'];
+const typesFor = st => {
+  const sc = R.scoringOf(st);
+  return sc === 'blob' ? ['wall', 'fragile', 'attack'] : sc === 'surround' ? ['wall', 'attack'] : ['wall', 'score', 'attack'];
+};
+// Surround mode calls the plain cells "Normal" (it has no other cell types)
+const typeLabel = (t, st) => (t === 'attack' && R.scoringOf(st) === 'surround' ? 'Normal' : TYPE_NAME[t]);
 // Fragile icon: a crack (unit coordinates, scaled per cell)
 const CRACK = [[-0.10, -0.85], [0.14, -0.33], [-0.2, 0.05], [0.16, 0.43], [-0.04, 0.86]];
 const CRACK_BRANCHES = [[[0.14, -0.33], [0.5, -0.18]], [[-0.2, 0.05], [-0.52, 0.2]]];
@@ -266,7 +271,7 @@ function renderLegend() {
   const k = types.join();
   if (k === legendKey) return;
   legendKey = k;
-  $('legend').innerHTML = types.map(t => `<span>${svgIcon(t)}${TYPE_NAME[t]}</span>`).join('');
+  $('legend').innerHTML = types.map(t => `<span>${svgIcon(t)}${typeLabel(t, G)}</span>`).join('');
 }
 
 /* ---------- rendering ---------- */
@@ -332,7 +337,11 @@ function renderPanels() {
     P.total.textContent = sc[p].total;
     const s = sc[p];
     const killTxt = `${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
-    if (s.scoring === 'blob') {
+    if (s.scoring === 'surround') {
+      P.sub.textContent = `${s.surrounded} surrounded`;
+      P.sub.title = `1 point for every enemy cell you've destroyed by surrounding it with a closed loop of your cells (${s.surrounded} so far).\nDestroying by contact alone scores nothing.`;
+      P.inc.hidden = true;
+    } else if (s.scoring === 'blob') {
       const n = s.blobs.length;
       P.sub.textContent = `${s.fragile} fragile · ${n} blob${n === 1 ? '' : 's'}`;
       P.sub.title = `Score = the sum of n² over your Fragile blobs (n = cells in the blob)` +
@@ -463,9 +472,15 @@ function renderBlueprint(p, b) {
 
 function boardDims() { return { w: boardCv.clientWidth, h: boardCv.clientHeight }; }
 
+// The preview is evaluated a few times per frame; cache it per (state, blueprint, handle, hex).
+let ghostMemo = { k: null, v: null };
 function ghostEval() {
   if (!UI.selected || !UI.hoverHex || !canAct(cur())) return null;
-  return R.evalPlacement(G, cur(), UI.selected.bp, UI.selected.handle, UI.hoverHex[0], UI.hoverHex[1]);
+  const k = [G.moveNo, Net.v, App.history.length, UI.selected.bp, UI.selected.handle, UI.hoverHex[0], UI.hoverHex[1]].join('|');
+  if (ghostMemo.k === k && ghostMemo.g === G) return ghostMemo.v;
+  const v = R.evalPlacement(G, cur(), UI.selected.bp, UI.selected.handle, UI.hoverHex[0], UI.hoverHex[1]);
+  ghostMemo = { k, g: G, v };
+  return v;
 }
 
 function renderBoard() {
@@ -528,12 +543,18 @@ function renderBoard() {
   const ev = ghostEval();
   if (ev) {
     const p = cur();
-    // Contact mode: enemy cells this placement would delete
+    // Surround mode: shade the area the placement would enclose
+    if (ev.ok && ev.enclosed && ev.enclosed.length) {
+      ctx.beginPath();
+      for (const k of ev.enclosed) { const [q, r] = unkey(k); hexPath(ctx, X(q, r), Y(r), s * 0.96, true); }
+      ctx.fillStyle = 'rgba(52,211,153,0.16)'; ctx.fill();
+    }
+    // Enemy cells this placement would delete: amber = contact, green = surrounded (scores a point)
     for (const d of ev.deletes || []) {
       const x = X(d.q, d.r), y = Y(d.r), k = s * 0.32;
       hexPath(ctx, x, y, s * 0.9);
       ctx.fillStyle = 'rgba(20,20,20,0.45)'; ctx.fill();
-      ctx.lineWidth = Math.max(2, s * 0.09); ctx.strokeStyle = AMBER; ctx.stroke();
+      ctx.lineWidth = Math.max(2, s * 0.09); ctx.strokeStyle = d.surround ? GOOD : AMBER; ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k);
       ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
@@ -635,6 +656,7 @@ function hexAtClient(cx, cy) {
 /* ---------- describing captures (preview + toasts) ---------- */
 function captureDetails(x, past) {
   const kp = R.settingsOf(G).killPoints, det = [];
+  if (x.surrounded) det.push(`${x.surrounded} surrounded, +${x.surrounded} pt${x.surrounded === 1 ? '' : 's'}`);
   if (x.fragileKills) det.push(`${x.fragileKills} fragile` + (x.chained ? `, ${x.chained} by chain reaction` : ''));
   if (x.scoreKills) det.push(`${x.scoreKills} score`);
   if (x.stolen) det.push(`${past ? 'stole' : 'steals'} ${x.stolen} pts`);
@@ -1004,6 +1026,7 @@ const MODE_HINT = {
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
   buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
+  surround: 'Surround: only Walls and normal cells; one starting ring each. Contact placement. Enclose enemy cells inside a closed loop of your cells to delete them (walls too): 1 point each.',
   fragile: 'Fragile: each side starts with its three blueprints on the board (each a wall with 2 Fragile cells, rotated 120° from each other). Contact placement. Destroying a Fragile cell destroys its whole connected same-colour blob. A blob of n cells is worth n² points.',
 };
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };

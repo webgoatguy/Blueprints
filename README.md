@@ -70,9 +70,9 @@ so your friend and the server always play by the same rules.
 
 | Option | Choices | Default |
 |---|---|---|
-| Mode | **Classic**, **Contact**, **Build-up**, **Build-up II** or **Fragile** (see below) | Classic |
+| Mode | **Classic**, **Contact**, **Build-up**, **Build-up II**, **Fragile** or **Surround** (see below) | Classic |
 | Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value; not used in Fragile) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
+| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value; not used in Fragile or Surround) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
 
 **Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
 Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
@@ -111,6 +111,14 @@ new cells are deleted).
 - A blob of n Fragile cells is worth n² points. Your score is the total over all your blobs, right now.
   There's no charging and no kill bonus.
 - While you aim a placement, the status bar shows how both players' scores would change.
+
+**Surround mode:** Contact placement, with only Walls and normal cells.
+- All three blueprints are a Wall surrounded by 6 normal cells. Each player starts with one copy on the
+  board: Blue on the left, Red on the same row 6 cells to the right.
+- After you place, every enemy cell inside a closed loop of your cells is deleted, Walls included.
+  The loop must be only your cells, and it can be any size with empty space inside.
+- Score = 1 point per enemy cell deleted by surrounding. A cell hit by both contact and surrounding still
+  scores; contact alone scores nothing.
 
 Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in
 `public/rules.js`). The Build-up II layout is `FORMATION` in the same file.

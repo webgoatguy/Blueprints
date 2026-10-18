@@ -315,7 +315,8 @@
           <button type="button" data-mode="contact" aria-pressed="false"><span>Contact</span><small>Touch to delete</small></button>
           <button type="button" data-mode="buildup" aria-pressed="false"><span>Build-up</span><small>Cells charge up</small></button>
           <button type="button" data-mode="buildup2" aria-pressed="false"><span>Build-up II</span><small>Start in formation</small></button>
-          <button type="button" data-mode="fragile" aria-pressed="false" class="span2"><span>Fragile</span><small>Chain reactions · blobs score n²</small></button>
+          <button type="button" data-mode="fragile" aria-pressed="false"><span>Fragile</span><small>Chain reactions · blobs score n²</small></button>
+          <button type="button" data-mode="surround" aria-pressed="false"><span>Surround</span><small>Enclose to capture</small></button>
         </div>
         <p class="hint" id="modeHint" style="margin-top:2px"></p>
       </div>
@@ -460,6 +461,15 @@
 
   <h3>Cells</h3>
   <ul id="rulesLegend"></ul>
+
+  <h3>Surround mode</h3>
+  <p>Contact placement (no overlapping; your new cells delete touching enemy cells except Walls), with only two cell types, Walls and normal cells:</p>
+  <ul>
+    <li><b>Start.</b> All three blueprints are a Wall surrounded by 6 normal cells. Each player starts with one copy of it on the board: Blue on the left, Red on the same row 6 cells to the right.</li>
+    <li><b>Surrounding.</b> After you place, every enemy cell inside a closed loop of your cells is deleted, <b>Walls included</b>. The loop must be made only of your cells (any type), and it can be as big as you like with empty space inside.</li>
+    <li><b>Score.</b> 1 point per enemy cell deleted by surrounding. A cell deleted by both contact and surrounding still scores its point; deleting by contact alone scores nothing.</li>
+    <li>While you aim a placement, the area it would enclose is shaded green, and cells it would surround are marked in green (contact-only deletions in amber).</li>
+  </ul>
 
   <h3>Playing online</h3>
   <ul>
