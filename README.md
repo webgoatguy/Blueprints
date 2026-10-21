@@ -127,8 +127,9 @@ Wall + 2 Score cells + 4 plain cells, rotated 120° from each other, starting on
   placement, including ones it just added. 2 kills with 5 Score cells = 10 points.
 
 **Bounty II mode:** the Bounty rules with a different start.
-- Each player starts with one solid hexagon of 19 Score cells (rows of 3, 4, 5, 4, 3) and no Walls.
-  Red's hexagon is Blue's moved 18 cells to the right.
+- All six starting rings start on one row, centres 4 apart (one empty tile between neighbours): Blue's
+  three on the left, Red's three on the right. The two outer rings are Score rings (Wall + 6 Score cells);
+  the four in the middle are plain rings (Wall + 6 normal cells).
 - Starting blueprints, the same as Build-up II's: Wall + 6 plain, Wall + 6 Score, Wall + 6 plain.
 
 Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in

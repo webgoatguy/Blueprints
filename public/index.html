@@ -318,7 +318,7 @@
           <button type="button" data-mode="fragile" aria-pressed="false"><span>Fragile</span><small>Chain reactions · blobs score n²</small></button>
           <button type="button" data-mode="surround" aria-pressed="false"><span>Surround</span><small>Enclose to capture</small></button>
           <button type="button" data-mode="bounty" aria-pressed="false"><span>Bounty</span><small>Kills pay out your score cells</small></button>
-          <button type="button" data-mode="bounty2" aria-pressed="false"><span>Bounty II</span><small>Start as a 19-cell hexagon</small></button>
+          <button type="button" data-mode="bounty2" aria-pressed="false"><span>Bounty II</span><small>Start in a line</small></button>
         </div>
         <p class="hint" id="modeHint" style="margin-top:2px"></p>
       </div>
@@ -475,9 +475,9 @@
   <h3>Bounty II mode</h3>
   <p>Exactly the Bounty rules, with a different start:</p>
   <ul>
-    <li><b>Starting board.</b> Each player has one solid hexagon of 19 Score cells (rows of 3, 4, 5, 4, 3) and no Walls. Red's hexagon is Blue's moved 18 cells to the right.</li>
+    <li><b>Starting board.</b> All six starting rings sit on one row with one empty tile between neighbours: Blue's three on the left, Red's three on the right. The two rings at the outer ends are the Score rings (a Wall + 6 Score cells); the four in the middle are plain rings (a Wall + 6 normal cells).</li>
     <li><b>Starting blueprints</b> (same for both players), as in Build-up II: a Wall surrounded by 6 plain cells, a Wall surrounded by 6 Score cells, and a Wall surrounded by 6 plain cells.</li>
-    <li>With 19 Score cells on the board from the start, every kill pays at least 19 points.</li>
+    <li>Each player starts with 6 Score cells, so the first kills pay 6 points or more.</li>
   </ul>
 
   <h3>Surround mode</h3>

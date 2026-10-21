@@ -60,6 +60,11 @@ const FORMATION = {
   blue: { middle: [-6, 0] },
   red: { middle: [6, 0] },
 };
+// Bounty II start: [player, centre q, ring type] on row r = 0, centres 4 apart.
+const LINE_START = [
+  ['blue', -10, 'score'], ['blue', -6, 'attack'], ['blue', -2, 'attack'],
+  ['red', 2, 'attack'], ['red', 6, 'attack'], ['red', 10, 'score'],
+];
 const STACK_STEP = [2, -4];          // 2 x NE (1,-1) + 2 x NW (0,-1)
 const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 point
 
@@ -84,8 +89,8 @@ const FORMATION_START_PTS = 1;       // starting Score cells already hold 1 poin
 //            'bounty'   -> Contact placement with Fragile's start (rotated blueprints, Score cells).
 //                         No per-turn income: destroying an enemy Score cell pays out the number of
 //                         Score cells you have on the board after that placement (per cell destroyed).
-//            'bounty2'  -> Bounty rules; each side starts with a solid 19-cell hexagon of Score cells
-//                         (Red 18 cells east of Blue) and Build-up II's ring blueprints.
+//            'bounty2'  -> Bounty rules with Build-up II's ring blueprints; all six rings start on one
+//                         row (see LINE_START), Score rings at the two outer ends.
 //            'fragile'  -> Formation start with rotated blueprints (2 Fragile cells each, see
 //                         ROTATED_AXES) and Contact placement; there are no Score cells. Destroying a Fragile cell destroys that player's whole
 //                         connected blob of Fragile cells (chain reaction, same colour only).
@@ -105,7 +110,7 @@ const MODE_RULES = {
   fragile: { placement: 'contact', scoring: 'blob', start: 'formation', blueprints: 'rotated', core: 'fragile' },
   surround: { placement: 'contact', scoring: 'surround', start: 'single', surround: true },
   bounty: { placement: 'contact', scoring: 'bounty', start: 'formation', blueprints: 'rotated', core: 'score' },
-  bounty2: { placement: 'contact', scoring: 'bounty', start: 'blob', blueprints: 'rings', core: 'score' },
+  bounty2: { placement: 'contact', scoring: 'bounty', start: 'line', blueprints: 'rings', core: 'score' },
 };
 export const placementOf = s => MODE_RULES[modeOf(s)].placement;
 export const scoringOf = s => MODE_RULES[modeOf(s)].scoring;
@@ -157,16 +162,13 @@ export function newState(settings) {
         }
       });
     }
-  } else if (MODE_RULES[st.mode].start === 'blob') {
-    // Bounty II: each player starts with a solid hexagon of 19 Score cells (radius 2: rows of
-    // 3, 4, 5, 4, 3). Blue is centred at (-9,0); Red is the same shape 18 cells east, at (9,0).
-    for (const p of PLAYERS) {
-      s.blueprints[p] = formationBlueprints(MODE_RULES[st.mode], p);
-      const cq = p === 'blue' ? -9 : 9;
-      for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) {
-        if (Math.abs(q + r) > 2) continue;
-        s.board[key(cq + q, r)] = { owner: p, type: 'score' };
-      }
+  } else if (MODE_RULES[st.mode].start === 'line') {
+    // Bounty II: all six starting rings on one row, centres 4 apart (one empty tile between rings).
+    // Blue on the left, Red on the right; the two outer rings are the Score rings.
+    for (const p of PLAYERS) s.blueprints[p] = formationBlueprints(MODE_RULES[st.mode], p);
+    for (const [p, cq, type] of LINE_START) {
+      const ring = ringBlueprint(type);
+      for (const k in ring) { const [q, r] = unkey(k); s.board[key(cq + q, r)] = { owner: p, type: ring[k] }; }
     }
   } else if (MODE_RULES[st.mode].start === 'single') {
     // Surround: three plain rings (wall + 6 normal cells); one copy of it on the board per player,
