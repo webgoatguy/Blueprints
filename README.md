@@ -127,10 +127,11 @@ Wall + 2 Score cells + 4 plain cells, rotated 120° from each other, starting on
   placement, including ones it just added. 2 kills with 5 Score cells = 10 points.
 
 **Bounty II mode:** the Bounty rules with a different start.
-- All six starting rings start on one row, centres 4 apart (one empty tile between neighbours): Blue's
-  three on the left, Red's three on the right. The two outer rings are Score rings (Wall + 6 Score cells);
-  the four in the middle are plain rings (Wall + 6 normal cells).
-- Starting blueprints, the same as Build-up II's: Wall + 6 plain, Wall + 6 Score, Wall + 6 plain.
+- Starting blueprints: 1 and 3 are the Normal type (a Score centre surrounded by 6 normal cells). 2 is the
+  Score type: 3 Walls on every other side of a Score centre plus 3 more Score cells. Red's Walls are E, NW
+  and SW (`TRI_WALLS` in `public/rules.js`), and Blue's are the mirror image.
+- All six blueprints start on the board on one row, centres 4 apart (one empty tile between neighbours):
+  Blue's on the left, Red's on the right, with the Score types at the two outer ends.
 
 Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in
 `public/rules.js`). The Build-up II layout is `FORMATION` in the same file.
