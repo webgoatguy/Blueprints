@@ -317,7 +317,8 @@
           <button type="button" data-mode="buildup2" aria-pressed="false"><span>Build-up II</span><small>Start in formation</small></button>
           <button type="button" data-mode="fragile" aria-pressed="false"><span>Fragile</span><small>Chain reactions · blobs score n²</small></button>
           <button type="button" data-mode="surround" aria-pressed="false"><span>Surround</span><small>Enclose to capture</small></button>
-          <button type="button" data-mode="bounty" aria-pressed="false" class="span2"><span>Bounty</span><small>Kills pay out your score cells</small></button>
+          <button type="button" data-mode="bounty" aria-pressed="false"><span>Bounty</span><small>Kills pay out your score cells</small></button>
+          <button type="button" data-mode="bounty2" aria-pressed="false"><span>Bounty II</span><small>Start as a 19-cell hexagon</small></button>
         </div>
         <p class="hint" id="modeHint" style="margin-top:2px"></p>
       </div>
@@ -469,6 +470,14 @@
     <li><b>Start.</b> Each blueprint is a Wall with 2 Score cells on opposite sides and 4 plain cells, and the three are 120° rotations of each other. They begin on the board in a vertical column, with Red's column 12 cells east.</li>
     <li><b>No income.</b> Score cells don't earn anything per turn.</li>
     <li><b>Bounties.</b> Each enemy Score cell you destroy pays out the number of Score cells you have on the board after that placement, including any it just added. Destroy 2 at once while you have 5 = 10 points. The panel shows your current payout, for example <b>+8/kill</b>.</li>
+  </ul>
+
+  <h3>Bounty II mode</h3>
+  <p>Exactly the Bounty rules, with a different start:</p>
+  <ul>
+    <li><b>Starting board.</b> Each player has one solid hexagon of 19 Score cells (rows of 3, 4, 5, 4, 3) and no Walls. Red's hexagon is Blue's moved 18 cells to the right.</li>
+    <li><b>Starting blueprints</b> (same for both players), as in Build-up II: a Wall surrounded by 6 plain cells, a Wall surrounded by 6 Score cells, and a Wall surrounded by 6 plain cells.</li>
+    <li>With 19 Score cells on the board from the start, every kill pays at least 19 points.</li>
   </ul>
 
   <h3>Surround mode</h3>

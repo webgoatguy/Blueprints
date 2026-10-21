@@ -1033,6 +1033,7 @@ const MODE_HINT = {
   contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
   buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
   buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
+  bounty2: 'Bounty II: Bounty rules, but each side starts with a solid hexagon of 19 Score cells (Red 18 cells east of Blue). Blueprints: wall + 6 plain, wall + 6 Score, wall + 6 plain.',
   bounty: 'Bounty: Contact placement, starting from three rotated blueprints already on the board. No points per turn: each enemy Score cell you destroy pays out the number of Score cells you have on the board.',
   surround: 'Surround: only Walls and normal cells; one starting ring each. Contact placement. Enclose enemy cells inside a closed loop of your cells to delete them (walls too): 1 point each.',
   fragile: 'Fragile: each side starts with its three blueprints on the board (each a wall with 2 Fragile cells, rotated 120° from each other). Contact placement. Destroying a Fragile cell destroys its whole connected same-colour blob. A blob of n cells is worth n² points.',
