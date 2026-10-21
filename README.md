@@ -128,8 +128,8 @@ Wall + 2 Score cells + 4 plain cells, rotated 120° from each other, starting on
 
 **Bounty II mode:** the Bounty rules with a different start.
 - Starting blueprints: 1 and 3 are the Normal type (a Score centre surrounded by 6 normal cells). 2 is the
-  Score type: 3 Walls on every other side of a Score centre plus 3 more Score cells. Red's Walls are E, NW
-  and SW (`TRI_WALLS` in `public/rules.js`), and Blue's are the mirror image.
+  Score type: a Score centre with 3 Walls down one side and 3 Score cells down the other. Red's Walls are
+  NE, E and SE (`TRI_WALLS` in `public/rules.js`), and Blue's are the mirror image (NW, W, SW).
 - All six blueprints start on the board on one row, centres 4 apart (one empty tile between neighbours):
   Blue's on the left, Red's on the right, with the Score types at the two outer ends.
 

@@ -59,11 +59,10 @@ function formationBlueprints(rules, p) {
 }
 
 // Bounty II blueprints.
-// Score type: 3 Walls on alternating neighbours, the centre and the other 3 neighbours are Score cells.
-//   Red's walls are at (1,0), (-1,1), (0,-1) in (east, north-east) coordinates = its E, NW and SW
-//   neighbours; Blue's are the mirror image (W, NE, SE).
+// Score type: a Score centre with 3 Walls down one side and 3 Score cells down the other.
+//   Red's walls are its NE, E and SE neighbours (right side); Blue's are the mirror image (NW, W, SW).
 // Normal type: a Score cell in the centre surrounded by 6 normal cells.
-const TRI_WALLS = { red: ['E', 'NW', 'SW'], blue: ['W', 'NE', 'SE'] };
+const TRI_WALLS = { red: ['NE', 'E', 'SE'], blue: ['NW', 'W', 'SW'] };
 function triWallBlueprint(p) {
   const o = { [key(0, 0)]: 'score' };
   DIRS.forEach(([dq, dr], i) => { o[key(dq, dr)] = TRI_WALLS[p].includes(DIR_NAMES[i]) ? 'wall' : 'score'; });
