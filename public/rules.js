@@ -52,9 +52,9 @@ function normalBlueprint() {
   for (const [dq, dr] of DIRS) o[key(dq, dr)] = 'attack';
   return o;
 }
-// Score type (blueprint 2): a Score centre with 3 Walls down one side and 3 Score cells down the other.
-// Red's Walls are its NE, E and SE neighbours; Blue's are the mirror image (NW, W, SW).
-const SCORE_TYPE_WALLS = { red: ['NE', 'E', 'SE'], blue: ['NW', 'W', 'SW'] };
+// Score type (blueprint 2): a Score centre ringed by alternating Walls and Score cells (3 of each).
+// Red's Walls are its W, NE and SE neighbours; Blue's are the mirror image (E, NW, SW).
+const SCORE_TYPE_WALLS = { red: ['W', 'NE', 'SE'], blue: ['E', 'NW', 'SW'] };
 function scoreBlueprint(p) {
   const o = { [key(0, 0)]: 'score' };
   DIRS.forEach(([dq, dr], i) => { o[key(dq, dr)] = SCORE_TYPE_WALLS[p].includes(DIR_NAMES[i]) ? 'wall' : 'score'; });
@@ -252,13 +252,27 @@ export function applyMove(s, move) {
   return { ok: true, state: n, info: {} };
 }
 
-// Rebuild a state from scratch by replaying a move log (used for take-backs).
-export function replay(log, settings) {
-  let s = newState(settings);
+// Rebuild a state by replaying a move log from a starting state (used for take-backs).
+// Pass the game's own saved starting state, so a later change to the starting position
+// can't alter games that were already in progress.
+export function replayFrom(start, log) {
+  let s = clone(start);
   for (const m of log) {
     const r = applyMove(s, m);
     if (!r.ok) throw new Error('Corrupt move log: ' + r.error);
     s = r.state;
   }
   return s;
+}
+// Same, starting from today's starting position.
+export const replay = (log, settings) => replayFrom(newState(settings), log);
+
+// True if two states have the same board, blueprints, scores and move number.
+export function sameState(a, b) {
+  const canon = s => JSON.stringify([
+    s.moveNo, s.banked, s.destroyed,
+    Object.keys(s.board).sort().map(k => [k, s.board[k].owner, s.board[k].type]),
+    PLAYERS.map(p => s.blueprints[p].map(bp => Object.keys(bp).sort().map(k => k + bp[k]))),
+  ]);
+  return canon(a) === canon(b);
 }

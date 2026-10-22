@@ -66,8 +66,9 @@ Send the link to a friend. The first person to open it takes the other seat.
 
 - **Blueprints.** Each player owns three 7-cell blueprints that can be stamped again and again.
   Blueprints 1 and 3 (Normal type) are a Score cell surrounded by 6 normal cells. Blueprint 2
-  (Score type) is a Score centre with 3 Walls down one side and 3 Score cells down the other.
-  Red's Walls are NE, E and SE; Blue's are the mirror image (NW, W, SW).
+  (Score type) is a Score centre ringed by alternating Walls and Score cells, 3 of each.
+  Red's Walls are W, NE and SE; Blue's are the mirror image (E, NW, SW). See `SCORE_TYPE_WALLS`
+  in `public/rules.js`.
 - **Start.** All six blueprints start on the board on one row, centres 4 apart (one empty tile
   between neighbours): Blue's on the left, Red's on the right, Score types at the two outer ends.
   Each player starts with 6 Score cells.
@@ -109,7 +110,10 @@ opened: the site says so and drops it from "Your games".
   tab is in the background. Each check is a single Redis read.
 - **Moves can't collide.** Each save is an atomic compare-and-set in Redis, so a double-click or two
   tabs can never apply a move twice.
-- **Take back** undoes your own last move, as long as your opponent hasn't moved since.
+- **Take back** undoes your own last move, as long as your opponent hasn't moved since. Each game
+  saves its own starting position, so changing the starting setup later doesn't affect games
+  already in progress. (Games started before this was added can keep playing, but take-back only
+  works in them if the starting setup hasn't changed since.)
 - **Games expire** after 60 days with no activity.
 - **Spectators**: once both seats are taken, anyone else who opens the link can watch.
 

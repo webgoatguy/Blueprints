@@ -11,7 +11,7 @@
 
 import crypto from 'node:crypto';
 import { getStore } from '../lib/store.js';
-import { applyMove, sanitizeMove, replay, newState, settingsOf, isSupported, PLAYERS, MAX_LOG } from '../public/rules.js';
+import { applyMove, sanitizeMove, replay, replayFrom, sameState, newState, settingsOf, isSupported, PLAYERS, MAX_LOG } from '../public/rules.js';
 
 const TTL = 60 * 60 * 24 * 60;              // games expire after 60 days without activity
 const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -91,11 +91,13 @@ async function create(store, body) {
   const now = Date.now();
   for (let i = 0; i < 6; i++) {
     const id = newId();
+    const state = newState(body.settings);   // turn order, validated in rules.js
     const game = {
       id, v: 1, created: now, updated: now,
       seats: { blue: null, red: null },
       log: [],
-      state: newState(body.settings),   // turn order + kill points, validated in rules.js
+      start: state,   // this game's starting position, kept so take-backs replay from it
+      state,
     };
     game.seats[seat] = { h: sha(token), name: cleanName(body.name, seat === 'blue' ? 'Blue' : 'Red') };
     if (await store.setNX(gameKey(id), JSON.stringify(game), TTL)) {
@@ -145,8 +147,18 @@ async function undo(store, body) {
     const seat = requireSeat(g, body);
     const last = g.log[g.log.length - 1];
     if (!last || last.p !== seat) throw new HttpError(409, 'You can only take back your own last move, before your opponent moves', { game: publicView(g) });
+    if (!g.start) {
+      // Game created before starting positions were saved with each game. Today's starting position
+      // is only safe to replay from if it reproduces this game's board exactly.
+      let full = null;
+      try { full = replay(g.log, settingsOf(g.state)); } catch { /* moves don't fit today's start */ }
+      if (!full || !sameState(full, g.state)) {
+        throw new HttpError(409, 'Take-back isn’t available in this game: it was started before the last rules update.', { game: publicView(g) });
+      }
+      g.start = newState(settingsOf(g.state));
+    }
     g.log.pop();
-    g.state = replay(g.log, settingsOf(g.state));
+    g.state = replayFrom(g.start, g.log);
     g.v++;
     return { ok: true, game: publicView(g) };
   });
