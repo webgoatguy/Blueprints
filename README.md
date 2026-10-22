@@ -62,81 +62,39 @@ Send the link to a friend. The first person to open it takes the other seat.
 
 ---
 
+## The rules
+
+- **Blueprints.** Each player owns three 7-cell blueprints that can be stamped again and again.
+  Blueprints 1 and 3 (Normal type) are a Score cell surrounded by 6 normal cells. Blueprint 2
+  (Score type) is a Score centre with 3 Walls down one side and 3 Score cells down the other.
+  Red's Walls are NE, E and SE; Blue's are the mirror image (NW, W, SW).
+- **Start.** All six blueprints start on the board on one row, centres 4 apart (one empty tile
+  between neighbours): Blue's on the left, Red's on the right, Score types at the two outer ends.
+  Each player starts with 6 Score cells.
+- **Place.** A placement may not overlap any cell and must touch one of your cells. Every enemy cell
+  touching your new cells is deleted, unless it's a Wall.
+- **Edit.** Move one blueprint cell to another spot in any of your blueprints. Every blueprint must stay connected.
+- **Score.** Score cells earn nothing per turn. Each enemy Score cell you delete pays out the number of
+  Score cells you had on the board **before** that placement, so Score cells in the blueprint you just
+  placed don't count yet. With 7 Score cells on the board, placing a blueprint holding 2 Score cells to
+  delete 1 enemy Score cell scores 7, not 9.
+
 ## Game options
 
-The **Game options** section is on the home screen. Your choice applies to games you create
-online and to pass-and-play. It's remembered in your browser, and it's saved with each game,
-so your friend and the server always play by the same rules.
+The only option is the **turn order**, chosen on the home screen. It applies to games you create
+online and to pass-and-play, is remembered in your browser, and is saved with each game, so your
+friend and the server always play by the same rules.
 
-| Option | Choices | Default |
-|---|---|---|
-| Mode | **Classic**, **Contact**, **Build-up**, **Build-up II**, **Fragile**, **Surround**, **Bounty** or **Bounty II** (see below) | Classic |
-| Turn order | **1 · 2 · 2 · 2 …**: Blue 1 move, then 2 moves each<br>**1 · 1 · 1 · 1 …**: alternate single moves | 1 · 2 · 2 · 2 … |
-| Points for destroying an enemy Score cell | 0–100 (each mode remembers its own value; not used in Fragile, Surround, Bounty or Bounty II) | Classic 2, Contact 20, Build-up 0, Build-up II 0 |
+| Choice | Meaning |
+|---|---|
+| **1 · 2 · 2 · 2 …** (default) | Blue 1 move, then 2 moves each |
+| **1 · 1 · 1 · 1 …** | Alternate single moves |
 
-**Classic mode:** stamps may overlap. Your cells overwrite enemy cells, except walls.
-Score = your Score cells on the board + (enemy Score cells destroyed × kill points).
+You can see a game's turn order in **Rules**, in **Menu**, and in the join dialog your friend sees.
 
-**Contact mode:**
-- A placement may not overlap any existing cell, yours or your opponent's. It must still touch one of your cells.
-- When you place cells, every enemy cell touching your new cells is deleted, unless it's a Wall.
-- Each time your turn ends, you bank 1 point per Score cell you have on the board.
-  The panel shows your current rate, for example `+3/turn`.
-- Score = banked points + (enemy Score cells deleted × kill points, 20 by default).
-
-**Build-up mode:** placement works like Contact (no overlapping; enemy non-wall cells touching your
-new cells are deleted).
-- After every move by either player, placement or edit, every Score cell on the board gains 1 point
-  for its owner. That includes a cell placed on that move. Each cell shows its stored charge.
-  With 1 · 2 · 2 turns, that's 4 points per full round.
-- Deleting an enemy Score cell steals all of its stored points permanently, and your opponent loses them.
-- Score = charge in your Score cells + stolen points (+ optional kill bonus, 0 by default).
-
-**Build-up II mode:** the same rules as Build-up, with a different start.
-- Starting blueprints, the same for both players: blueprint 2 is a Wall surrounded by 6 Score
-  cells, and blueprints 1 and 3 are a Wall surrounded by 6 plain (Attack) cells.
-- There are no starting Walls. Each side's three blueprints start on the board in a vertical
-  column, blueprint 1 on top, each one 2 NE + 2 NW from the one below. Red's column is 12 cells east.
-- The starting Score cells hold 1 point each (2 after Blue's first move).
-
-**Fragile mode:** Contact placement, and **Fragile** cells instead of Score cells.
-- Each starting blueprint is a Wall with 2 Fragile cells on opposite sides and 4 plain cells, and the three are
-  120° rotations of each other. Blue's Fragile cells are on NW–SE, E–W and NE–SW; Red is the mirror image
-  (NE–SW, E–W, NW–SE). They start on the board in the same column formation as Build-up II, with
-  Red 12 cells east. Every starting Fragile cell is its own blob, so both players start with a score of 1.
-- When a Fragile cell is destroyed, every Fragile cell of the same colour connected to it is destroyed
-  too: a chain reaction that takes the whole blob. It never spreads into the other colour and stops
-  at any non-Fragile cell.
-- Each Fragile cell on the board shows the size of the blob it belongs to.
-- A blob of n Fragile cells is worth n² points. Your score is the total over all your blobs, right now.
-  There's no charging and no kill bonus.
-- While you aim a placement, the status bar shows how both players' scores would change.
-
-**Surround mode:** Contact placement, with only Walls and normal cells.
-- All three blueprints are a Wall surrounded by 6 normal cells. Each player starts with one copy on the
-  board: Blue on the left, Red on the same row 6 cells to the right.
-- After you place, every enemy cell inside a closed loop of your cells is deleted, Walls included.
-  The loop must be only your cells, and it can be any size with empty space inside.
-- Score = 1 point per enemy cell deleted by surrounding. A cell hit by both contact and surrounding still
-  scores; contact alone scores nothing.
-
-**Bounty mode:** Contact placement with Fragile mode's start, but with Score cells: each blueprint is a
-Wall + 2 Score cells + 4 plain cells, rotated 120° from each other, starting on the board in columns.
-- Score cells earn nothing per turn.
-- Each enemy Score cell you destroy pays out the number of Score cells you have on the board after that
-  placement, including ones it just added. 2 kills with 5 Score cells = 10 points.
-
-**Bounty II mode:** the Bounty rules with a different start.
-- Starting blueprints: 1 and 3 are the Normal type (a Score centre surrounded by 6 normal cells). 2 is the
-  Score type: a Score centre with 3 Walls down one side and 3 Score cells down the other. Red's Walls are
-  NE, E and SE (`TRI_WALLS` in `public/rules.js`), and Blue's are the mirror image (NW, W, SW).
-- All six blueprints start on the board on one row, centres 4 apart (one empty tile between neighbours):
-  Blue's on the left, Red's on the right, with the Score types at the two outer ends.
-
-Internally, each mode is a placement rule, a scoring rule and a starting setup (`MODE_RULES` in
-`public/rules.js`). The Build-up II layout is `FORMATION` in the same file.
-You can see a game's options in **Rules**, in **Menu**, and in the join dialog your friend sees.
-Games created before these options existed keep their original rules (Classic, 1 point, 1 · 2 · 2 turns).
+**Older games:** earlier versions had several other modes (Classic, Contact, Build-up, Fragile, Surround,
+Bounty…). Those have been removed. A saved game that was played in one of them can no longer be
+opened: the site says so and drops it from "Your games".
 
 ## How online play works
 
@@ -180,8 +138,8 @@ npm run dev:env
 
 ## Changing the rules
 
-All rules live in `public/rules.js`: the starting blueprints, the turn orders, the game options
-(`DEFAULT_SETTINGS`, `normalizeSettings`), what can overwrite what, and scoring. The server and the browser both import it, so one edit changes both.
+All rules live in `public/rules.js`: the starting blueprints (`startBlueprints`, `LINE_START`), the turn
+orders, placement (`evalPlacement`) and scoring. The server and the browser both import it, so one edit changes both.
 Existing games are stored as a move log and the current board. A rules change applies to future
 moves, so start fresh games after changing anything big.
 
@@ -192,4 +150,5 @@ moves, so start fresh games after changing anything big.
 | "No Redis database is connected" | Do steps 2 and 3: connect a Redis database, then redeploy. |
 | It still says that after connecting | The database was connected with a custom env-variable prefix. Reconnect it without a prefix, or rename the variables to `REDIS_URL` (or `KV_REST_API_URL` / `KV_REST_API_TOKEN`). |
 | "Game not found" | Check the code, or the game expired (60 days idle). |
+| "…played in a mode that has since been removed" | The game was created before the other modes were removed. Start a new game. |
 | Opening `index.html` straight from disk doesn't work | The page uses JavaScript modules, which browsers block on `file://`. Use `npm run dev` or the deployed site. |

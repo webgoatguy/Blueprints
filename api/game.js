@@ -1,8 +1,7 @@
 // Single Vercel serverless function that runs every online game.
 //
 //   GET  /api/game?id=ABC123&v=7         -> latest game (or {unchanged:true} if still at v7)
-//   POST /api/game  {action:'create', seat:'blue'|'red'|'random', name,
-//                    settings:{turnOrder:'122'|'1111', killPoints:0-20}}
+//   POST /api/game  {action:'create', seat:'blue'|'red'|'random', name, settings:{turnOrder:'122'|'1111'}}
 //   POST /api/game  {action:'join',   id, name}
 //   POST /api/game  {action:'move',   id, token, v, move}
 //   POST /api/game  {action:'undo',   id, token, v}       (take back your own last move)
@@ -12,7 +11,7 @@
 
 import crypto from 'node:crypto';
 import { getStore } from '../lib/store.js';
-import { applyMove, sanitizeMove, replay, newState, settingsOf, PLAYERS, MAX_LOG } from '../public/rules.js';
+import { applyMove, sanitizeMove, replay, newState, settingsOf, isSupported, PLAYERS, MAX_LOG } from '../public/rules.js';
 
 const TTL = 60 * 60 * 24 * 60;              // games expire after 60 days without activity
 const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -55,7 +54,9 @@ async function load(store, id) {
   if (!ID_RE.test(String(id || ''))) throw new HttpError(400, 'Invalid game code');
   const raw = await store.get(gameKey(id));
   if (!raw) throw new HttpError(404, 'Game not found. It may have expired, or the code is wrong.');
-  return { raw, game: JSON.parse(raw) };
+  const game = JSON.parse(raw);
+  if (!isSupported(game.state)) throw new HttpError(410, 'This game was played in a mode that has since been removed, so it can’t be opened.');
+  return { raw, game };
 }
 
 // Read-modify-write with an atomic compare-and-set. `mutate` returns the

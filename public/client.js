@@ -1,5 +1,5 @@
 // Hex Blueprints — browser client.
-// Two modes:
+// Two ways to play:
 //   'local'  — pass and play on one device (moves applied locally, full undo).
 //   'online' — moves are sent to /api/game, which validates and stores them in Redis;
 //              this page polls for the opponent's moves.
@@ -11,27 +11,18 @@ const { DIRS, PLAYERS, TYPES, key, unkey } = R;
 /* ---------- constants ---------- */
 const SQRT3 = Math.sqrt(3);
 const NAME = { blue: 'Blue', red: 'Red' };
-const TYPE_NAME = { score: 'Score', fragile: 'Fragile', attack: 'Attack', wall: 'Wall' };
+// 'attack' is the internal name of the plain cell type; the game calls it "Normal".
+const TYPE_NAME = { score: 'Score', attack: 'Normal', wall: 'Wall' };
 const TYPE_DESC = {
-  score: 'worth points (how depends on the mode)',
-  fragile: 'Fragile mode only: destroying one destroys its whole connected same-colour blob; a blob of n cells is worth n² points',
+  score: 'each enemy Score cell you delete pays out one point per Score cell you had on the board before that placement',
   attack: 'plain cell with no special ability',
-  wall: 'cannot be overwritten or deleted by the opponent'
+  wall: 'can never be deleted by the opponent'
 };
 const COL = {
-  blue: { main: '#3b82f6', score: '#3b82f6', fragile: '#7fb2ff', attack: '#2056d6', wall: '#172f6e' },
-  red:  { main: '#ef4444', score: '#ef4444', fragile: '#ff8f8f', attack: '#c42020', wall: '#6a1616' },
+  blue: { main: '#3b82f6', score: '#3b82f6', attack: '#2056d6', wall: '#172f6e' },
+  red:  { main: '#ef4444', score: '#ef4444', attack: '#c42020', wall: '#6a1616' },
 };
-// Cell types shown in the legend for a given game
-const typesFor = st => {
-  const sc = R.scoringOf(st);
-  return sc === 'blob' ? ['wall', 'fragile', 'attack'] : sc === 'surround' ? ['wall', 'attack'] : ['wall', 'score', 'attack'];
-};
-// Surround mode calls the plain cells "Normal" (it has no other cell types)
-const typeLabel = (t, st) => (t === 'attack' && R.scoringOf(st) === 'surround' ? 'Normal' : TYPE_NAME[t]);
-// Fragile icon: a crack (unit coordinates, scaled per cell)
-const CRACK = [[-0.10, -0.85], [0.14, -0.33], [-0.2, 0.05], [0.16, 0.43], [-0.04, 0.86]];
-const CRACK_BRANCHES = [[[0.14, -0.33], [0.5, -0.18]], [[-0.2, 0.05], [-0.52, 0.2]]];
+const LEGEND_TYPES = ['wall', 'score', 'attack'];
 const GRID = '#3c3c3c', BOARD_BG = '#2a2a2a';
 const GOOD = '#34d399', BAD = '#fb7185', AMBER = '#fbbf24';
 const MIN_SIZE = 10, MAX_SIZE = 80;
@@ -82,43 +73,13 @@ function drawIcon(ctx, cx, cy, s, type) {
       for (let bx = x0 + off; bx < x0 + w; bx += w / 2) ctx.fillRect(bx + g / 2, y + g / 2, w / 2 - g, rh - g);
     }
     ctx.restore();
-  } else if (type === 'fragile') {
-    const k = s * 0.62;
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-    ctx.lineWidth = Math.max(1.2, s * 0.11);
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.beginPath();
-    CRACK.forEach(([x, y], i) => i ? ctx.lineTo(cx + x * k, cy + y * k) : ctx.moveTo(cx + x * k, cy + y * k));
-    for (const [[x1, y1], [x2, y2]] of CRACK_BRANCHES) { ctx.moveTo(cx + x1 * k, cy + y1 * k); ctx.lineTo(cx + x2 * k, cy + y2 * k); }
-    ctx.stroke();
-    ctx.restore();
   }
-  // attack cells are intentionally drawn blank (no icon)
+  // normal cells are intentionally drawn blank (no icon)
 }
 
-function drawCell(ctx, cx, cy, s, owner, type, alpha, label) {
+function drawCell(ctx, cx, cy, s, owner, type, alpha) {
   const a = alpha == null ? 1 : alpha;
   if (a !== 1) { ctx.save(); ctx.globalAlpha = a; }
-  if (label != null && s >= 9) {
-    // Build-up: Score cell showing its stored charge. Fragile: Fragile cell showing its blob's size.
-    // The number replaces the icon, for readability.
-    hexPath(ctx, cx, cy, s);
-    ctx.fillStyle = COL[owner][type];
-    ctx.fill();
-    ctx.lineWidth = Math.max(1, s * 0.1);
-    ctx.strokeStyle = GRID;
-    ctx.stroke();
-    const txt = String(label);
-    const fs = s * (txt.length <= 2 ? 0.84 : txt.length === 3 ? 0.66 : 0.52);
-    ctx.font = `800 ${fs}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(txt, cx, cy + fs * 0.05);
-    if (a !== 1) ctx.restore();
-    return;
-  }
   hexPath(ctx, cx, cy, s);
   ctx.fillStyle = COL[owner][type];
   ctx.fill();
@@ -148,11 +109,6 @@ function svgIcon(t) {
   } else if (t === 'wall') {
     const Rr = [[-0.95,-0.66,0.9],[0.05,-0.66,0.9],[-0.95,-0.2,0.42],[-0.45,-0.2,0.9],[0.53,-0.2,0.42],[-0.95,0.26,0.9],[0.05,0.26,0.9]];
     inner = Rr.map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="0.38" rx="0.05" fill="currentColor"/>`).join('');
-  } else if (t === 'fragile') {
-    const pts = CRACK.map(([x, y]) => `${x},${y}`).join(' ');
-    const br = CRACK_BRANCHES.map(([[x1, y1], [x2, y2]]) => `M${x1},${y1}L${x2},${y2}`).join('');
-    inner = `<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="0.2" stroke-linejoin="round" stroke-linecap="round"/>` +
-      `<path d="${br}" stroke="currentColor" stroke-width="0.2" stroke-linecap="round"/>`;
   } else {
     const pts = HC.map((c, i) => (c * 0.86).toFixed(3) + ',' + (HS[i] * 0.86).toFixed(3)).join(' ');
     inner = `<polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="0.2"/>`;
@@ -186,6 +142,11 @@ function saveCreds(id, seat, token) {
 function loadCreds(id) {
   const c = memCreds[id] || LS.get(credKey(id));
   return c && PLAYERS.includes(c.seat) && typeof c.token === 'string' ? c : null;
+}
+// Drop a game that no longer exists (expired, or played in a removed mode) from "Your games".
+function forgetRecent(id) {
+  const list = (LS.get('hexbp:recent', []) || []).filter(g => g && g.id !== id);
+  LS.set('hexbp:recent', list);
 }
 function touchRecent(id) {
   const list = LS.get('hexbp:recent', []) || [];
@@ -261,18 +222,11 @@ function buildPanels() {
       ro.observe(ref.canvas);
     }
   }
-  $('rulesLegend').innerHTML = TYPES.map(t => `<li><span class="icon">${svgIcon(t)}</span> <b>${TYPE_NAME[t]}</b> — ${TYPE_DESC[t]}</li>`).join('');
+  $('rulesLegend').innerHTML = LEGEND_TYPES.map(t => `<li><span class="icon">${svgIcon(t)}</span> <b>${TYPE_NAME[t]}</b> — ${TYPE_DESC[t]}</li>`).join('');
+  $('legend').innerHTML = LEGEND_TYPES.map(t => `<span>${svgIcon(t)}${TYPE_NAME[t]}</span>`).join('');
 }
 
-// Board legend: only the cell types used by the current game's mode.
-let legendKey = '';
-function renderLegend() {
-  const types = typesFor(G);
-  const k = types.join();
-  if (k === legendKey) return;
-  legendKey = k;
-  $('legend').innerHTML = types.map(t => `<span>${svgIcon(t)}${typeLabel(t, G)}</span>`).join('');
-}
+function renderLegend() { /* the legend is fixed (built once in buildPanels) */ }
 
 /* ---------- rendering ---------- */
 let rafPending = false;
@@ -336,42 +290,11 @@ function renderPanels() {
     P.badge.style.visibility = p === c ? 'visible' : 'hidden';
     P.total.textContent = sc[p].total;
     const s = sc[p];
-    const killTxt = `${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'} destroyed × ${s.killPoints} point${s.killPoints === 1 ? '' : 's'}`;
-    if (s.scoring === 'bounty') {
-      P.sub.textContent = `${s.destroyed} kill${s.destroyed === 1 ? '' : 's'} · ${s.onBoard} score cells`;
-      P.sub.title = `${s.fromKills} points from destroying ${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'}.\n` +
-        `Each enemy Score cell you destroy pays out the number of Score cells you have on the board after that placement — currently ${s.onBoard}.`;
-      P.inc.textContent = `+${s.perKill}/kill`;
-      P.inc.hidden = false;
-    } else if (s.scoring === 'surround') {
-      P.sub.textContent = `${s.surrounded} surrounded`;
-      P.sub.title = `1 point for every enemy cell you've destroyed by surrounding it with a closed loop of your cells (${s.surrounded} so far).\nDestroying by contact alone scores nothing.`;
-      P.inc.hidden = true;
-    } else if (s.scoring === 'blob') {
-      const n = s.blobs.length;
-      P.sub.textContent = `${s.fragile} fragile · ${n} blob${n === 1 ? '' : 's'}`;
-      P.sub.title = `Score = the sum of n² over your Fragile blobs (n = cells in the blob)` +
-        (n ? `: ${s.blobs.map(b => b + '²').join(' + ')} = ${s.total}.\n` : ': 0.\n') +
-        `You have ${s.fragile} Fragile cell${s.fragile === 1 ? '' : 's'} in ${n} blob${n === 1 ? '' : 's'}` +
-        (n ? `: ${s.blobs.join(', ')}.` : '.');
-      P.inc.hidden = true;
-    } else if (s.scoring === 'buildup') {
-      P.sub.textContent = `${s.charge} charging + ${s.banked} stolen` + (s.killPoints ? ` + ${s.killScore} kill` : '');
-      P.sub.title = `${s.charge} points stored in ${s.onBoard} Score cell${s.onBoard === 1 ? '' : 's'} on the board (lost to the opponent if they delete them)` +
-        ` + ${s.banked} stolen from deleted enemy Score cells (kept permanently)` +
-        (s.killPoints ? ` + ${killTxt}` : '') + `.\nYour Score cells gain +${s.perMove} in total after every move.`;
-      P.inc.textContent = `+${s.perMove}/move`;
-      P.inc.hidden = false;
-    } else if (s.scoring === 'bank') {
-      P.sub.textContent = `${s.banked} banked + ${s.killScore} kill pts`;
-      P.sub.title = `${s.banked} points banked at the ends of turns + ${killTxt}.\n${s.perTurn} Score cell${s.perTurn === 1 ? '' : 's'} on the board → +${s.perTurn} at the end of each turn.`;
-      P.inc.textContent = `+${s.perTurn}/turn`;
-      P.inc.hidden = false;
-    } else {
-      P.sub.textContent = `${s.onBoard} on board + ${s.killScore} kill pts`;
-      P.sub.title = `${s.onBoard} Score cells on the board + ${killTxt}`;
-      P.inc.hidden = true;
-    }
+    P.sub.textContent = `${s.destroyed} kill${s.destroyed === 1 ? '' : 's'} · ${s.onBoard} score cell${s.onBoard === 1 ? '' : 's'}`;
+    P.sub.title = `${s.total} point${s.total === 1 ? '' : 's'} from destroying ${s.destroyed} enemy Score cell${s.destroyed === 1 ? '' : 's'}.\n` +
+      `Each enemy Score cell you destroy pays out the number of Score cells you had on the board before that placement — currently ${s.onBoard}.`;
+    P.inc.textContent = `+${s.perKill}/kill`;
+    P.inc.hidden = false;
     P.inc.title = P.sub.title;
     P.total.parentElement.title = P.sub.title;
     if (isOnline()) {
@@ -386,7 +309,7 @@ function renderPanels() {
     for (let b = 0; b < 3; b++) {
       const ref = BP[p][b], cells = G.blueprints[p][b];
       ref.card.classList.toggle('sel', canAct(p) && !!UI.selected && UI.selected.bp === b);
-      const cnt = { score: 0, fragile: 0, attack: 0, wall: 0 };
+      const cnt = { score: 0, attack: 0, wall: 0 };
       for (const k in cells) cnt[cells[k]]++;
       const html = TYPES.filter(t => cnt[t])
         .map(t => `<span title="${TYPE_NAME[t]}">${svgIcon(t)}${cnt[t]}</span>`).join('') || '<span>empty</span>';
@@ -512,15 +435,11 @@ function renderBoard() {
 
   // cells
   const vis = (x, y) => x > -2 * s && x < w + 2 * s && y > -2 * s && y < h + 2 * s;
-  const showCharge = R.scoringOf(G) === 'buildup';
-  const blobSize = R.scoringOf(G) === 'blob' ? R.fragileBlobSizeMap(G.board) : null;
   for (const k in G.board) {
     const [q, r] = unkey(k), x = X(q, r), y = Y(r);
     if (!vis(x, y)) continue;
     const c = G.board[k];
-    const label = showCharge && c.type === 'score' ? (c.pts || 0)
-      : blobSize && c.type === 'fragile' ? blobSize[k] : null;
-    drawCell(ctx, x, y, s, c.owner, c.type, 1, label);
+    drawCell(ctx, x, y, s, c.owner, c.type, 1);
   }
 
   // last placement
@@ -531,7 +450,7 @@ function renderBoard() {
     ctx.lineWidth = Math.max(1.5, s * 0.07);
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.stroke();
-    // Contact mode: ghost outlines where the opponent's cells were just deleted
+    // ghost outlines where the opponent's cells were just deleted
     const gone = (lm.deleted || []).filter(k => !G.board[k]);
     if (gone.length) {
       const victim = R.other(lm.player);
@@ -549,18 +468,12 @@ function renderBoard() {
   const ev = ghostEval();
   if (ev) {
     const p = cur();
-    // Surround mode: shade the area the placement would enclose
-    if (ev.ok && ev.enclosed && ev.enclosed.length) {
-      ctx.beginPath();
-      for (const k of ev.enclosed) { const [q, r] = unkey(k); hexPath(ctx, X(q, r), Y(r), s * 0.96, true); }
-      ctx.fillStyle = 'rgba(52,211,153,0.16)'; ctx.fill();
-    }
-    // Enemy cells this placement would delete: amber = contact, green = surrounded (scores a point)
+    // Enemy cells this placement would delete
     for (const d of ev.deletes || []) {
       const x = X(d.q, d.r), y = Y(d.r), k = s * 0.32;
       hexPath(ctx, x, y, s * 0.9);
       ctx.fillStyle = 'rgba(20,20,20,0.45)'; ctx.fill();
-      ctx.lineWidth = Math.max(2, s * 0.09); ctx.strokeStyle = d.surround ? GOOD : AMBER; ctx.stroke();
+      ctx.lineWidth = Math.max(2, s * 0.09); ctx.strokeStyle = AMBER; ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k);
       ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k);
@@ -624,7 +537,7 @@ function toast(msg, kind) {
   toastEl.textContent = msg;
   toastEl.className = 'show ' + k;
   clearTimeout(toastT);
-  toastT = setTimeout(() => { toastEl.className = k; }, 2200);
+  toastT = setTimeout(() => { toastEl.className = k; }, Math.max(2200, String(msg).length * 45));   // longer messages stay longer
 }
 
 /* ---------- view ---------- */
@@ -660,36 +573,17 @@ function hexAtClient(cx, cy) {
 }
 
 /* ---------- describing captures (preview + toasts) ---------- */
-function captureDetails(x, past) {
-  const kp = R.settingsOf(G).killPoints, det = [];
-  if (x.surrounded) det.push(`${x.surrounded} surrounded, +${x.surrounded} pt${x.surrounded === 1 ? '' : 's'}`);
-  if (x.fragileKills) det.push(`${x.fragileKills} fragile` + (x.chained ? `, ${x.chained} by chain reaction` : ''));
+// e.g. "1 score, +7 pts = 1 × 7 score cells". The payout counts your Score cells *before* the placement.
+function captureDetails(x) {
+  const det = [];
   if (x.scoreKills) det.push(`${x.scoreKills} score`);
-  if (x.bounty) det.push(`+${x.bounty} pts = ${x.scoreKills} × ${x.perKill} score cells`);
-  if (x.stolen) det.push(`${past ? 'stole' : 'steals'} ${x.stolen} pts`);
-  if (x.scoreKills && kp) det.push(`+${x.scoreKills * kp} pts`);
+  if (x.scoreKills) det.push(`+${x.bounty} pt${x.bounty === 1 ? '' : 's'} = ${x.scoreKills} × ${x.perKill} score cell${x.perKill === 1 ? '' : 's'}`);
   return det;
 }
 function gainText(ev) {
-  let t = '';
-  if (ev.captures) {
-    const det = captureDetails(ev);
-    t += ` · ${R.placementOf(G) === 'contact' ? 'deletes' : 'captures'} ${ev.captures}${det.length ? ` (${det.join(', ')})` : ''}`;
-  }
-  if (ev.kept) t += ` · keeps ${ev.kept} pts`;
-  if (R.scoringOf(G) === 'blob') t += blobPreview(ev);
-  return t;
-}
-// Fragile mode: how both players' scores (sum of n² over blobs) would change if this placement is made.
-function blobPreview(ev) {
-  const p = cur(), o = R.other(p);
-  const board = { ...G.board };
-  for (const c of ev.cells) board[c.k] = { owner: p, type: c.type };
-  for (const d of ev.deletes) delete board[d.k];
-  const now = R.getScores(G);
-  const who = x => (isOnline() && Net.seat === x ? 'you' : seatName(x));
-  const me = R.blobPoints(R.fragileBlobs(board, p)), them = R.blobPoints(R.fragileBlobs(board, o));
-  return ` · ${who(p)} ${now[p].total}→${me}, ${who(o)} ${now[o].total}→${them}`;
+  if (!ev.captures) return '';
+  const det = captureDetails(ev);
+  return ` · deletes ${ev.captures}${det.length ? ` (${det.join(', ')})` : ''}`;
 }
 
 /* ---------- making moves ---------- */
@@ -700,12 +594,10 @@ async function commit(move) {
   const who = move.p === Net.seat && isOnline() ? 'You' : NAME[move.p];
   const parts = [];
   if (info.captures) {
-    const det = captureDetails(info, true);
-    parts.push(`${who} ${R.placementOf(G) === 'contact' ? 'deleted' : 'captured'} ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
+    const det = captureDetails(info);
+    parts.push(`${who} deleted ${info.captures} cell${info.captures > 1 ? 's' : ''}` +
       (det.length ? ` (${det.join(', ')})` : ''));
   }
-  if (info.kept) parts.push(`${parts.length ? 'kept' : `${who} kept`} ${info.kept} pts from overwritten Score cells`);
-  if (info.turnEnded) parts.push(`${parts.length ? 'turn over' : 'Turn over'}: +${info.banked} banked`);
   const captureMsg = parts.length ? parts.join(' · ') : null;
 
   if (!isOnline()) {
@@ -846,7 +738,8 @@ async function poll() {
     if (res.ok) {
       Net.fails = 0; setConn(true);
       if (res.game && epoch === Net.epoch && !Net.pending) applyGame(res.game);
-    } else if (res.status === 404) {
+    } else if (res.status === 404 || res.status === 410) {   // 410: game from a removed mode
+      forgetRecent(id);
       toast(res.error || 'Game not found');
       goHome();
       return;
@@ -884,7 +777,10 @@ async function openOnline(id, firstGame) {
     catch { res = { ok: false, error: 'Couldn’t reach the server. Online play needs the deployed site (or npm run dev).' }; }
   }
   if (Net.id !== id || !isOnline()) return;
-  if (!res.ok || !res.game) { toast(res.error || 'Could not load that game'); goHome(); return; }
+  if (!res.ok || !res.game) {
+    if (res.status === 404 || res.status === 410) forgetRecent(id);
+    toast(res.error || 'Could not load that game'); goHome(); return;
+  }
   applyGame(res.game, true);
   maybeOfferJoin();
   schedulePoll();
@@ -1026,66 +922,34 @@ function startLocal() {
   requestAnimationFrame(fitView);
 }
 
-/* ---------- game options (mode, turn order, kill points) ---------- */
-const MODE_LABEL = R.MODE_NAMES;
-const MODE_HINT = {
-  classic: 'Classic: stamps may overlap. Your cells overwrite enemy cells (except walls). Score = Score cells on the board + kills.',
-  contact: 'Contact: no overlapping. Placing next to enemy cells deletes them (except walls). You bank 1 point per Score cell at the end of each of your turns.',
-  buildup: 'Build-up: Contact placement (no overlapping; touching deletes enemy cells except walls). Every Score cell gains 1 point after every move. Delete an enemy Score cell to steal all of its points.',
-  buildup2: 'Build-up II: Build-up rules, but each side starts with its three blueprints already on the board. Blueprint 2 is a wall ringed by 6 Score cells (starting at 1 point); blueprints 1 and 3 are a wall ringed by 6 plain cells.',
-  bounty2: 'Bounty II: Bounty rules. Blueprints: a Score type (3 walls down one side + 4 Score cells) and two Normal types (a Score cell ringed by 6 normal cells). All six start on one row, one tile apart, with the Score types at the outer ends.',
-  bounty: 'Bounty: Contact placement, starting from three rotated blueprints already on the board. No points per turn: each enemy Score cell you destroy pays out the number of Score cells you have on the board.',
-  surround: 'Surround: only Walls and normal cells; one starting ring each. Contact placement. Enclose enemy cells inside a closed loop of your cells to delete them (walls too): 1 point each.',
-  fragile: 'Fragile: each side starts with its three blueprints on the board (each a wall with 2 Fragile cells, rotated 120° from each other). Contact placement. Destroying a Fragile cell destroys its whole connected same-colour blob. A blob of n cells is worth n² points.',
-};
+/* ---------- game options (turn order) ---------- */
 const ORDER_LABEL = { '122': '1-2-2-2…', '1111': '1-1-1-1…' };
 function settingsText(st) {
-  return `${MODE_LABEL[st.mode] || 'Classic'} mode · turns ${ORDER_LABEL[st.turnOrder]}` +
-    (R.usesKillPoints(st.mode) ? ` · ${st.killPoints} point${st.killPoints === 1 ? '' : 's'} per enemy Score cell destroyed` : '');
+  return `turns ${ORDER_LABEL[st.turnOrder] || ORDER_LABEL['122']}`;
 }
 
-// Lobby choices, remembered per browser. Each mode keeps its own kill-points value
-// (Classic defaults to 2, Contact to 20).
+// Lobby choices, remembered per browser.
 function loadLobbyOpts() {
   const saved = LS.get('hexbp:options', null);
-  const old = LS.get('hexbp:settings', null);   // from before modes existed
+  const old = LS.get('hexbp:settings', null);   // from older versions
   const o = saved && typeof saved === 'object' ? saved : {};
-  const kp = { ...R.DEFAULT_KILL_POINTS, ...(old && Number.isInteger(old.killPoints) ? { classic: old.killPoints } : {}), ...(o.kp || {}) };
-  for (const m of R.MODES) kp[m] = R.normalizeSettings({ mode: m, killPoints: kp[m] }).killPoints;
   return {
-    mode: R.MODES.includes(o.mode) ? o.mode : 'classic',
     turnOrder: R.TURN_ORDERS.includes(o.turnOrder) ? o.turnOrder : (old && R.TURN_ORDERS.includes(old.turnOrder) ? old.turnOrder : '122'),
-    kp,
   };
 }
 let lobbyOpts = loadLobbyOpts();
-const chosenSettings = () => R.normalizeSettings({ mode: lobbyOpts.mode, turnOrder: lobbyOpts.turnOrder, killPoints: lobbyOpts.kp[lobbyOpts.mode] });
+const chosenSettings = () => R.normalizeSettings({ turnOrder: lobbyOpts.turnOrder });
 function setLobbyOpts(patch) {
-  if (patch.mode) lobbyOpts.mode = patch.mode;
   if (patch.turnOrder) lobbyOpts.turnOrder = patch.turnOrder;
-  if ('killPoints' in patch) {
-    lobbyOpts.kp[lobbyOpts.mode] = R.normalizeSettings({ mode: lobbyOpts.mode, killPoints: clamp(Math.round(patch.killPoints) || 0, 0, R.MAX_KILL_POINTS) }).killPoints;
-  }
   LS.set('hexbp:options', lobbyOpts);
   renderOptions();
 }
 function renderOptions() {
-  for (const b of document.querySelectorAll('#modeSeg button')) b.setAttribute('aria-pressed', String(b.dataset.mode === lobbyOpts.mode));
   for (const b of document.querySelectorAll('#orderSeg button')) b.setAttribute('aria-pressed', String(b.dataset.order === lobbyOpts.turnOrder));
-  const kp = lobbyOpts.kp[lobbyOpts.mode];
-  if (document.activeElement !== $('kpVal') || Number($('kpVal').value) !== kp) $('kpVal').value = kp;
-  $('kpMinus').disabled = kp <= 0;
-  $('kpPlus').disabled = kp >= R.MAX_KILL_POINTS;
-  $('modeHint').textContent = MODE_HINT[lobbyOpts.mode] || '';
-  $('kpField').hidden = !R.usesKillPoints(lobbyOpts.mode);   // Fragile scores by blob size only
 }
 function fillRulesDialog() {
   const st = App.mode ? R.settingsOf(G) : chosenSettings();
-  $('rulesThis').textContent = (App.mode ? 'This game: ' : 'Selected options: ') + settingsText(st);
-  // Each mode's section shows this game's value if it's that mode, otherwise that mode's default.
-  for (const el of document.querySelectorAll('.rulesKp')) {
-    el.textContent = el.dataset.mode === st.mode ? st.killPoints : R.DEFAULT_KILL_POINTS[el.dataset.mode];
-  }
+  $('rulesThis').textContent = (App.mode ? 'This game: ' : 'Selected option: ') + settingsText(st);
 }
 
 function openMenu() {
@@ -1338,12 +1202,7 @@ function finishDrag() {
 undoBtn.addEventListener('click', undo);
 $('rulesBtn').addEventListener('click', () => { fillRulesDialog(); rulesDlg.showModal(); });
 $('lobbyRules').addEventListener('click', () => { fillRulesDialog(); rulesDlg.showModal(); });
-for (const b of document.querySelectorAll('#modeSeg button')) b.addEventListener('click', () => setLobbyOpts({ mode: b.dataset.mode }));
 for (const b of document.querySelectorAll('#orderSeg button')) b.addEventListener('click', () => setLobbyOpts({ turnOrder: b.dataset.order }));
-$('kpMinus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.kp[lobbyOpts.mode] - 1 }));
-$('kpPlus').addEventListener('click', () => setLobbyOpts({ killPoints: lobbyOpts.kp[lobbyOpts.mode] + 1 }));
-$('kpVal').addEventListener('change', () => setLobbyOpts({ killPoints: Number($('kpVal').value) }));
-$('kpVal').addEventListener('blur', renderOptions);
 $('menuBtn').addEventListener('click', openMenu);
 inviteBtn.addEventListener('click', () => {
   if (!Net.seat && PLAYERS.some(p => !Net.seats[p])) maybeOfferJoin(true);
